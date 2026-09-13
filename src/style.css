@@ -115,6 +115,31 @@ h2 {
   background: var(--card-bg);
 }
 
+.mode-controls summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.format-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.4rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.format-grid label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.format-grid input {
+  width: auto;
+}
+
 .mode-controls .row {
   margin-bottom: 0.5rem;
 }

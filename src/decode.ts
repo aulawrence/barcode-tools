@@ -1,15 +1,34 @@
-import { decodeImage, drawOverlay, renderResultCards, type ReadResult } from "./barcode-reader";
+import {
+  barcodeFormats,
+  decodeImage,
+  drawOverlay,
+  renderResultCards,
+  setActiveFormats,
+  type ReadInputBarcodeFormat,
+  type ReadResult,
+} from "./barcode-reader";
 import { annotatePdf, openPdf, renderAndDecodePage, type PdfSession } from "./pdf-tools";
-import { closeVideo, openVideo, scanForward, seekToFrame, type VideoSession } from "./video-tools";
+import {
+  closeVideoSession,
+  openCamera,
+  openVideoFile,
+  scanForward,
+  seekToFrame,
+  type VideoSession,
+} from "./video-tools";
 
 const fileInput = document.querySelector<HTMLInputElement>("#file-input")!;
 const dropZone = document.querySelector<HTMLDivElement>("#drop-zone")!;
+const cameraBtn = document.querySelector<HTMLButtonElement>("#camera-btn")!;
 const previewWrap = document.querySelector<HTMLDivElement>("#preview-wrap")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#preview-canvas")!;
 const statusEl = document.querySelector<HTMLDivElement>("#status")!;
 const resultsEl = document.querySelector<HTMLDivElement>("#results")!;
 const interruptBtn = document.querySelector<HTMLButtonElement>("#interrupt-btn")!;
 const videoEl = document.querySelector<HTMLVideoElement>("#video-source")!;
+
+const formatCheckboxesEl = document.querySelector<HTMLDivElement>("#format-checkboxes")!;
+const formatClearBtn = document.querySelector<HTMLButtonElement>("#format-clear")!;
 
 const pdfControls = document.querySelector<HTMLDivElement>("#pdf-controls")!;
 const pdfPrevBtn = document.querySelector<HTMLButtonElement>("#pdf-prev")!;
@@ -21,17 +40,62 @@ const pdfAnnotateStatus = document.querySelector<HTMLParagraphElement>("#pdf-ann
 
 const videoControls = document.querySelector<HTMLDivElement>("#video-controls")!;
 const videoScanBtn = document.querySelector<HTMLButtonElement>("#video-scan-btn")!;
+const videoFileOnly = document.querySelector<HTMLDivElement>("#video-file-only")!;
+const videoFileOnly2 = document.querySelector<HTMLDivElement>("#video-file-only-2")!;
 const videoRestartBtn = document.querySelector<HTMLButtonElement>("#video-restart-btn")!;
 const videoFrameInput = document.querySelector<HTMLInputElement>("#video-frame-input")!;
 const videoFrameGoBtn = document.querySelector<HTMLButtonElement>("#video-frame-go")!;
+const cameraOnly = document.querySelector<HTMLDivElement>("#camera-only")!;
+const cameraStopBtn = document.querySelector<HTMLButtonElement>("#camera-stop-btn")!;
 const videoFrameLabel = document.querySelector<HTMLParagraphElement>("#video-frame-label")!;
 
-type Mode = "image" | "pdf" | "video";
+type Mode = "image" | "pdf" | "video" | "camera";
 
+let currentMode: Mode | null = null;
+let currentImageBitmap: ImageBitmap | null = null;
 let pdfSession: PdfSession | null = null;
 let videoSession: VideoSession | null = null;
 let activeAbort: AbortController | null = null;
 let busy = false;
+let foundOnceInVideo = false;
+
+// --- barcode type filter -----------------------------------------------
+
+for (const format of barcodeFormats) {
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = format;
+  input.addEventListener("change", onFormatFilterChange);
+  label.appendChild(input);
+  label.appendChild(document.createTextNode(format));
+  formatCheckboxesEl.appendChild(label);
+}
+
+formatClearBtn.addEventListener("click", () => {
+  formatCheckboxesEl
+    .querySelectorAll<HTMLInputElement>("input[type=checkbox]")
+    .forEach((cb) => (cb.checked = false));
+  onFormatFilterChange();
+});
+
+function getSelectedFormats(): ReadInputBarcodeFormat[] {
+  return Array.from(formatCheckboxesEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]:checked")).map(
+    (cb) => cb.value as ReadInputBarcodeFormat,
+  );
+}
+
+function onFormatFilterChange() {
+  setActiveFormats(getSelectedFormats());
+  // Re-run decoding on whatever's already on screen so the filter takes
+  // effect immediately; video/camera scanning just picks it up on the next
+  // frame it decodes.
+  if (currentMode === "image" && currentImageBitmap) {
+    void decodeAndShowImage(currentImageBitmap);
+  } else if (currentMode === "pdf" && pdfSession) {
+    void goToPdfPage(Number(pdfPageInput.value) || 1);
+  }
+}
 
 // --- file intake -----------------------------------------------------------
 
@@ -52,7 +116,7 @@ fileInput.addEventListener("change", () => {
   if (file) void handleFile(file);
 });
 
-function detectMode(file: File): Mode {
+function detectMode(file: File): "image" | "pdf" | "video" {
   const name = file.name.toLowerCase();
   if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
   if (file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|avi|mkv)$/.test(name)) return "video";
@@ -66,9 +130,12 @@ function resetModeUI() {
   pdfAnnotateStatus.textContent = "";
   videoFrameLabel.textContent = "";
   resultsEl.innerHTML = "";
+  currentMode = null;
+  currentImageBitmap = null;
   pdfSession = null;
+  foundOnceInVideo = false;
   if (videoSession) {
-    closeVideo(videoSession);
+    closeVideoSession(videoSession);
     videoSession = null;
   }
   activeAbort?.abort();
@@ -87,17 +154,23 @@ async function handleFile(file: File) {
 // --- image mode --------------------------------------------------------
 
 async function handleImageFile(file: File) {
-  statusEl.textContent = "Decoding…";
+  currentMode = "image";
+  currentImageBitmap = await createImageBitmap(file);
+  await decodeAndShowImage(currentImageBitmap);
+}
 
-  const bitmap = await createImageBitmap(file);
+async function decodeAndShowImage(bitmap: ImageBitmap) {
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
   const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(bitmap, 0, 0);
   previewWrap.hidden = false;
+  statusEl.textContent = "Decoding…";
 
   try {
-    const results = await decodeImage(file);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const results = await decodeImage(imageData);
     reportResults(results, canvas.width, ctx);
   } catch (err) {
     statusEl.textContent = `Decode failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -117,6 +190,7 @@ function reportResults(results: ReadResult[], width: number, ctx: CanvasRenderin
 // --- pdf mode ------------------------------------------------------------
 
 async function handlePdfFile(file: File) {
+  currentMode = "pdf";
   statusEl.textContent = "Loading PDF…";
   try {
     pdfSession = await openPdf(file);
@@ -190,17 +264,21 @@ function annotatedFilename(): string {
   return name.replace(/\.pdf$/i, "") + "_annotated.pdf";
 }
 
-// --- video mode ----------------------------------------------------------
+// --- video mode (uploaded file) ------------------------------------------
 
 async function handleVideoFile(file: File) {
+  currentMode = "video";
   statusEl.textContent = "Loading video…";
   try {
-    videoSession = await openVideo(videoEl, file);
+    videoSession = await openVideoFile(videoEl, file);
   } catch (err) {
     statusEl.textContent = `Could not open video: ${err instanceof Error ? err.message : String(err)}`;
     return;
   }
   videoControls.hidden = false;
+  videoFileOnly.hidden = false;
+  videoFileOnly2.hidden = false;
+  cameraOnly.hidden = true;
   videoScanBtn.textContent = "Find first barcode";
   canvas.width = videoEl.videoWidth;
   canvas.height = videoEl.videoHeight;
@@ -213,10 +291,45 @@ async function handleVideoFile(file: File) {
   }
 }
 
-let foundOnceInVideo = false;
+// --- camera mode -----------------------------------------------------------
 
-videoScanBtn.addEventListener("click", async () => {
+cameraBtn.addEventListener("click", () => void handleCameraStart());
+
+async function handleCameraStart() {
+  resetModeUI();
+  currentMode = "camera";
+  statusEl.textContent = "Requesting camera…";
+  try {
+    videoSession = await openCamera(videoEl);
+  } catch (err) {
+    statusEl.textContent = `Could not start camera: ${err instanceof Error ? err.message : String(err)}. Camera access requires HTTPS (or localhost) and permission.`;
+    currentMode = null;
+    return;
+  }
+  videoControls.hidden = false;
+  videoFileOnly.hidden = true;
+  videoFileOnly2.hidden = true;
+  cameraOnly.hidden = false;
+  videoScanBtn.textContent = "Scanning…";
+  canvas.width = videoEl.videoWidth;
+  canvas.height = videoEl.videoHeight;
+  canvas.getContext("2d")!.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+  previewWrap.hidden = false;
+  await runVideoScan();
+}
+
+cameraStopBtn.addEventListener("click", () => {
+  resetModeUI();
+  busy = false;
+  previewWrap.hidden = true;
+  statusEl.textContent = "Camera stopped.";
+});
+
+// --- shared video/camera scanning ------------------------------------------
+
+async function runVideoScan() {
   if (!videoSession || busy) return;
+  const sessionAtStart = videoSession;
   busy = true;
   setVideoControlsDisabled(true);
   interruptBtn.hidden = false;
@@ -225,23 +338,31 @@ videoScanBtn.addEventListener("click", async () => {
   statusEl.textContent = "Scanning…";
 
   try {
-    const outcome = await scanForward(videoSession, canvas, abort.signal, ({ frameIndex, timeSeconds }) => {
+    const outcome = await scanForward(sessionAtStart, canvas, abort.signal, ({ frameIndex, timeSeconds }) => {
+      if (videoSession !== sessionAtStart) return;
       videoFrameLabel.textContent = `Scanning… frame ${frameIndex} (t=${timeSeconds.toFixed(2)}s)`;
     });
+
+    // The session may have been closed/replaced (e.g. "Stop camera", or a
+    // new file dropped) while this scan was in flight — don't clobber
+    // whatever status that transition already set.
+    if (videoSession !== sessionAtStart) return;
 
     videoFrameInput.value = String(outcome.frame.frameIndex);
     videoFrameLabel.textContent = `Frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s)`;
 
     if (outcome.status === "found") {
       foundOnceInVideo = true;
-      videoScanBtn.textContent = "Find next match";
+      videoScanBtn.textContent = currentMode === "camera" ? "Scan for next barcode" : "Find next match";
       statusEl.textContent = `Found ${outcome.results.length} barcode${outcome.results.length === 1 ? "" : "s"} at frame ${outcome.frame.frameIndex}.`;
       renderResultCards(resultsEl, outcome.results);
     } else if (outcome.status === "ended") {
+      videoScanBtn.textContent = currentMode === "camera" ? "Scan for barcode" : "Find first barcode";
       statusEl.textContent = foundOnceInVideo
         ? "Reached end of video — no more barcodes found."
         : "Reached end of video — no barcodes found.";
     } else {
+      videoScanBtn.textContent = currentMode === "camera" ? "Scan for barcode" : "Find first barcode";
       statusEl.textContent = `Interrupted at frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s).`;
     }
   } finally {
@@ -250,7 +371,9 @@ videoScanBtn.addEventListener("click", async () => {
     interruptBtn.hidden = true;
     activeAbort = null;
   }
-});
+}
+
+videoScanBtn.addEventListener("click", () => void runVideoScan());
 
 videoRestartBtn.addEventListener("click", () => {
   if (!videoSession || busy) return;
@@ -292,6 +415,7 @@ function setVideoControlsDisabled(disabled: boolean) {
   videoRestartBtn.disabled = disabled;
   videoFrameInput.disabled = disabled;
   videoFrameGoBtn.disabled = disabled;
+  cameraStopBtn.disabled = disabled;
 }
 
 // --- interrupt -------------------------------------------------------------

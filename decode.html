@@ -22,9 +22,21 @@
         separators, etc.) are shown explicitly rather than silently dropped.
       </p>
 
+      <details id="format-filter" class="mode-controls">
+        <summary>Limit to specific barcode types (optional)</summary>
+        <div id="format-checkboxes" class="format-grid"></div>
+        <div class="row">
+          <button type="button" id="format-clear" class="secondary">Clear (scan all types)</button>
+        </div>
+      </details>
+
       <div id="drop-zone" class="drop-zone">
         <input type="file" id="file-input" accept="image/*,application/pdf,video/*" />
         <p>Drop an image, PDF, or video here, or click to choose a file.</p>
+      </div>
+
+      <div class="row">
+        <button type="button" id="camera-btn" class="secondary">Use camera</button>
       </div>
 
       <div id="pdf-controls" class="mode-controls" hidden>
@@ -54,14 +66,19 @@
         </p>
         <div class="row">
           <button type="button" id="video-scan-btn">Find first barcode</button>
+        </div>
+        <div id="video-file-only" class="row" hidden>
           <button type="button" id="video-restart-btn" class="secondary">Restart from beginning</button>
         </div>
-        <div class="row">
+        <div id="video-file-only-2" class="row" hidden>
           <div>
             <label for="video-frame-input">Skip to frame #</label>
             <input type="number" id="video-frame-input" min="0" value="0" />
           </div>
           <button type="button" id="video-frame-go" class="secondary">Go</button>
+        </div>
+        <div id="camera-only" class="row" hidden>
+          <button type="button" id="camera-stop-btn" class="secondary">Stop camera</button>
         </div>
         <p id="video-frame-label" class="lede"></p>
       </div>

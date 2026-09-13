@@ -1,14 +1,16 @@
 import { decodeImage, drawOverlay, type ReadResult } from "./barcode-reader";
 
+export type VideoSource = { kind: "file"; objectUrl: string } | { kind: "camera"; stream: MediaStream };
+
 export interface VideoSession {
   video: HTMLVideoElement;
-  objectUrl: string;
+  source: VideoSource;
   usesFrameCallback: boolean;
   /** Best-effort frames/sec, refined once real playback data is available; used only to translate a requested frame number into a seek time. */
   estimatedFps: number;
 }
 
-export function openVideo(video: HTMLVideoElement, file: File): Promise<VideoSession> {
+export function openVideoFile(video: HTMLVideoElement, file: File): Promise<VideoSession> {
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
     const usesFrameCallback = typeof video.requestVideoFrameCallback === "function";
@@ -19,7 +21,7 @@ export function openVideo(video: HTMLVideoElement, file: File): Promise<VideoSes
     };
     const onLoaded = () => {
       cleanup();
-      resolve({ video, objectUrl, usesFrameCallback, estimatedFps: 30 });
+      resolve({ video, source: { kind: "file", objectUrl }, usesFrameCallback, estimatedFps: 30 });
     };
     const onError = () => {
       cleanup();
@@ -34,11 +36,46 @@ export function openVideo(video: HTMLVideoElement, file: File): Promise<VideoSes
   });
 }
 
-export function closeVideo(session: VideoSession) {
+/** Requests the device camera (rear-facing when available) and attaches it to `video`. Requires a secure context (HTTPS or localhost). */
+export async function openCamera(video: HTMLVideoElement): Promise<VideoSession> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" } },
+    audio: false,
+  });
+  const usesFrameCallback = typeof video.requestVideoFrameCallback === "function";
+
+  video.srcObject = stream;
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", onLoaded);
+      video.removeEventListener("error", onError);
+    };
+    const onLoaded = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Could not start camera preview"));
+    };
+    video.addEventListener("loadedmetadata", onLoaded);
+    video.addEventListener("error", onError);
+  });
+  await video.play();
+
+  return { video, source: { kind: "camera", stream }, usesFrameCallback, estimatedFps: 30 };
+}
+
+export function closeVideoSession(session: VideoSession) {
   session.video.pause();
-  session.video.removeAttribute("src");
-  session.video.load();
-  URL.revokeObjectURL(session.objectUrl);
+  if (session.source.kind === "file") {
+    session.video.removeAttribute("src");
+    session.video.load();
+    URL.revokeObjectURL(session.source.objectUrl);
+  } else {
+    session.video.srcObject = null;
+    for (const track of session.source.stream.getTracks()) track.stop();
+  }
 }
 
 export interface FrameInfo {

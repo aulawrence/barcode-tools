@@ -19,8 +19,19 @@ nothing uploaded anywhere), deployable as a static site to GitHub Pages.
   - **Video**: "Find first barcode" / "Find next match" plays forward
     decoding frames until one has a barcode; "Skip to frame #" jumps
     directly to an (approximate) frame. See the caveat below.
-  - Both PDF-annotate and video-scan are long-running and show an
-    **Interrupt** button to cancel mid-scan.
+  - **Camera**: "Use camera" requests the device camera (rear-facing
+    preferred) and immediately starts scanning; "Scan for next barcode"
+    keeps going after a hit. Reuses the same frame-scanning code as video
+    files. **Requires a secure context** — `https://` or `localhost` — see
+    Development below for testing from another device.
+  - Both PDF-annotate and video/camera scanning are long-running and show
+    an **Interrupt** button to cancel mid-scan.
+  - **Type filter**: an optional checkbox list (all `zxing-cpp` formats,
+    pulled from `zxing-wasm`'s own format table) limits which symbologies
+    are searched for — useful for excluding false positives or speeding up
+    scanning. Applies to every decode path; changing it re-decodes the
+    current image/PDF page immediately, and takes effect on the next
+    frame for video/camera.
 - **Generate** (`generate.html`) — a thin wrapper around
   [BWIPP](https://github.com/bwipp/postscriptbarcode/wiki) via
   [`bwip-js`](https://github.com/metafloor/bwip-js). Pick a symbology (the
@@ -61,6 +72,15 @@ npm run dev       # local dev server
 npm run build     # type-check + production build to dist/
 npm run preview   # serve the production build locally
 ```
+
+The dev server (`vite.config.ts`) runs over **self-signed HTTPS** on all
+network interfaces (via `@vitejs/plugin-basic-ssl` + `server.host: true`),
+so it can be reached from another device on the LAN — e.g. a phone, to test
+the camera — at `https://<this-machine's-LAN-IP>:5173/decode.html`. The
+browser will warn about the untrusted certificate; accept it once per
+device. This only affects `vite`/`vite preview`; the production build
+deployed to GitHub Pages is plain static files served over real HTTPS by
+GitHub, no certificate involved.
 
 ## Deployment
 

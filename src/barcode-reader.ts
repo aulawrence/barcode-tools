@@ -1,4 +1,4 @@
-import { prepareZXingModule, readBarcodes, type ReadResult } from "zxing-wasm/reader";
+import { prepareZXingModule, readBarcodes, type ReadResult, type ReadInputBarcodeFormat } from "zxing-wasm/reader";
 import zxingReaderWasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 
 // Self-host the wasm binary instead of the library's default (jsDelivr CDN)
@@ -10,6 +10,16 @@ prepareZXingModule({
 });
 
 export type { ReadResult };
+export { barcodeFormats, type ReadInputBarcodeFormat } from "zxing-wasm/reader";
+
+// Applies to every decodeImage() call (image/PDF/video/camera) until
+// changed again; an empty list means "all supported formats", matching
+// zxing-wasm's own default.
+let activeFormats: ReadInputBarcodeFormat[] = [];
+
+export function setActiveFormats(formats: ReadInputBarcodeFormat[]) {
+  activeFormats = formats;
+}
 
 export async function decodeImage(input: Blob | ImageData): Promise<ReadResult[]> {
   return readBarcodes(input, {
@@ -17,6 +27,7 @@ export async function decodeImage(input: Blob | ImageData): Promise<ReadResult[]
     maxNumberOfSymbols: 32,
     returnErrors: true,
     textMode: "Escaped",
+    formats: activeFormats,
   });
 }
 
