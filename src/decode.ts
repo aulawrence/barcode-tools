@@ -438,6 +438,8 @@ videoFrameGoBtn.addEventListener("click", async () => {
         ? "No barcode found on this frame."
         : `Found ${results.length} barcode${results.length === 1 ? "" : "s"} on this frame.`;
     renderResultCards(resultsEl, results);
+  } catch (err) {
+    statusEl.textContent = err instanceof Error ? err.message : String(err);
   } finally {
     busy = false;
     setVideoControlsDisabled(false);

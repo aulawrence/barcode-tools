@@ -25,6 +25,13 @@
   box-sizing: border-box;
 }
 
+/* The [hidden] attribute and a class-based `display` (e.g. .row's flex)
+   have equal CSS specificity, so without this an element with both loses
+   its hidden state to whichever rule happens to come later in the sheet. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);

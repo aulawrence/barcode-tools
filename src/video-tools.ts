@@ -203,6 +203,12 @@ export function seekToFrame(
   canvas: HTMLCanvasElement,
   frameIndex: number,
 ): Promise<SeekResult> {
+  if (session.source.kind === "camera") {
+    // A live MediaStream has no timeline to seek — currentTime assignment
+    // is a no-op and "seeked" never fires, which would otherwise hang forever.
+    return Promise.reject(new Error("Skip-to-frame isn't available for a live camera — only for uploaded video files."));
+  }
+
   const { video } = session;
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -210,8 +216,15 @@ export function seekToFrame(
   const maxTime = Number.isFinite(video.duration) ? video.duration : Infinity;
   const targetTime = Math.min(Math.max(frameIndex / session.estimatedFps, 0), maxTime);
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const SEEK_TIMEOUT_MS = 8000;
+    const timeout = setTimeout(() => {
+      video.removeEventListener("seeked", onSeeked);
+      reject(new Error("Timed out waiting for the video to seek."));
+    }, SEEK_TIMEOUT_MS);
+
     const onSeeked = () => {
+      clearTimeout(timeout);
       video.removeEventListener("seeked", onSeeked);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       void decodeImage(ctx.getImageData(0, 0, canvas.width, canvas.height)).then((results) => {
