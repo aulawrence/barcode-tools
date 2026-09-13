@@ -22,8 +22,11 @@ nothing uploaded anywhere), deployable as a static site to GitHub Pages.
   - **Camera**: "Use camera" requests the device camera (rear-facing
     preferred) and immediately starts scanning; "Scan for next barcode"
     keeps going after a hit. Reuses the same frame-scanning code as video
-    files. **Requires a secure context** — `https://` or `localhost` — see
-    Development below for testing from another device.
+    files, but doesn't show frame/time counters — unlike a video file's
+    timeline, a live stream's counters aren't meaningful and there's no
+    skip-to-frame control to use them for. **Requires a secure context** —
+    `https://` or `localhost` — see Development below for testing from
+    another device.
   - Both PDF-annotate and video/camera scanning are long-running and show
     an **Interrupt** button to cancel mid-scan.
   - **Type filter**: an optional checkbox list (all `zxing-cpp` formats,

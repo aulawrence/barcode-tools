@@ -32,6 +32,7 @@ const videoEl = document.querySelector<HTMLVideoElement>("#video-source")!;
 
 const formatCheckboxesEl = document.querySelector<HTMLDivElement>("#format-checkboxes")!;
 const formatClearBtn = document.querySelector<HTMLButtonElement>("#format-clear")!;
+const formatFilterSummary = document.querySelector<HTMLSpanElement>("#format-filter-summary")!;
 
 const pdfControls = document.querySelector<HTMLDivElement>("#pdf-controls")!;
 const pdfPrevBtn = document.querySelector<HTMLButtonElement>("#pdf-prev")!;
@@ -89,7 +90,9 @@ function getSelectedFormats(): ReadInputBarcodeFormat[] {
 }
 
 function onFormatFilterChange() {
-  setActiveFormats(getSelectedFormats());
+  const selected = getSelectedFormats();
+  setActiveFormats(selected);
+  formatFilterSummary.textContent = selected.length === 0 ? "(optional)" : `(${selected.length} selected)`;
   // Re-run decoding on whatever's already on screen so the filter takes
   // effect immediately; video/camera scanning just picks it up on the next
   // frame it decodes.
@@ -137,6 +140,7 @@ function resetModeUI() {
   statusEl.textContent = "";
   resultsEl.innerHTML = "";
   currentMode = null;
+  currentImageBitmap?.close();
   currentImageBitmap = null;
   pdfSession = null;
   foundOnceInVideo = false;
@@ -230,6 +234,8 @@ async function handlePdfFile(file: File) {
   await goToPdfPage(1);
 }
 
+let pdfRenderToken = 0;
+
 async function goToPdfPage(pageNum: number) {
   if (!pdfSession) return;
   pageNum = Math.min(Math.max(pageNum, 1), pdfSession.numPages);
@@ -238,12 +244,22 @@ async function goToPdfPage(pageNum: number) {
   statusEl.textContent = "Rendering page…";
   resultsEl.innerHTML = "";
 
-  const results = await renderAndDecodePage(pdfSession, pageNum, canvas);
-  statusEl.textContent =
-    results.length === 0
-      ? "No barcodes found on this page."
-      : `Found ${results.length} barcode${results.length === 1 ? "" : "s"} on this page.`;
-  renderResultCards(resultsEl, results);
+  // pdf.js throws if a second render() starts on the same canvas before the
+  // first finishes, which rapid Prev/Next clicking could trigger; this token
+  // makes a superseded call's result a no-op instead of an unhandled error.
+  const token = ++pdfRenderToken;
+  try {
+    const results = await renderAndDecodePage(pdfSession, pageNum, canvas);
+    if (token !== pdfRenderToken) return;
+    statusEl.textContent =
+      results.length === 0
+        ? "No barcodes found on this page."
+        : `Found ${results.length} barcode${results.length === 1 ? "" : "s"} on this page.`;
+    renderResultCards(resultsEl, results);
+  } catch (err) {
+    if (token !== pdfRenderToken) return;
+    statusEl.textContent = `Could not render page: ${err instanceof Error ? err.message : String(err)}`;
+  }
 }
 
 pdfPrevBtn.addEventListener("click", () => void goToPdfPage(Number(pdfPageInput.value) - 1));
@@ -437,13 +453,17 @@ videoRestartBtn.addEventListener("click", () => {
 
 videoFrameGoBtn.addEventListener("click", async () => {
   if (!videoSession || busy) return;
+  const sessionAtStart = videoSession;
   busy = true;
   setVideoControlsDisabled(true);
   statusEl.textContent = "Seeking…";
 
   try {
     const target = Math.max(0, Math.round(Number(videoFrameInput.value) || 0));
-    const { frame, results } = await seekToFrame(videoSession, canvas, target);
+    const { frame, results } = await seekToFrame(sessionAtStart, canvas, target);
+    // The session may have been closed/replaced (Back, a new file, Stop
+    // camera) while this seek was pending — don't overwrite its UI state.
+    if (videoSession !== sessionAtStart) return;
     videoFrameLabel.textContent = `Frame ${frame.frameIndex} (t=${frame.timeSeconds.toFixed(2)}s, approximate)`;
     statusEl.textContent =
       results.length === 0
@@ -451,6 +471,7 @@ videoFrameGoBtn.addEventListener("click", async () => {
         : `Found ${results.length} barcode${results.length === 1 ? "" : "s"} on this frame.`;
     renderResultCards(resultsEl, results);
   } catch (err) {
+    if (videoSession !== sessionAtStart) return;
     statusEl.textContent = err instanceof Error ? err.message : String(err);
   } finally {
     busy = false;

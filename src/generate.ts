@@ -244,7 +244,8 @@ function collectFieldValues(container: HTMLElement): Record<string, unknown> {
     if (kind === "boolean") {
       if ((el as HTMLInputElement).checked) result[name] = true;
     } else if (kind === "number") {
-      if (el.value !== "") result[name] = Number(el.value);
+      const n = Number(el.value);
+      if (el.value !== "" && !Number.isNaN(n)) result[name] = n;
     } else if (el.value !== "") {
       result[name] = el.value;
     }
