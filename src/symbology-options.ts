@@ -34,12 +34,7 @@ export const GENERIC_FIELD_GROUPS: FieldGroup[] = [
   {
     title: "Text",
     fields: [
-      {
-        name: "includetext",
-        label: "Show human-readable text",
-        kind: "boolean",
-        hint: "Works on its own — everything else in this group is optional and only overrides BWIPP's built-in defaults",
-      },
+      { name: "includetext", label: "Show human-readable text", kind: "boolean" },
       {
         name: "textfont",
         label: "Text font",
