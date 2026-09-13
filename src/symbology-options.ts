@@ -34,16 +34,34 @@ export const GENERIC_FIELD_GROUPS: FieldGroup[] = [
   {
     title: "Text",
     fields: [
-      { name: "includetext", label: "Show human-readable text", kind: "boolean" },
-      { name: "textfont", label: "Text font", kind: "text", placeholder: "e.g. OCRB, Helvetica" },
-      { name: "textsize", label: "Text size", kind: "number", min: 1, step: 1 },
+      {
+        name: "includetext",
+        label: "Show human-readable text",
+        kind: "boolean",
+        hint: "Works on its own — everything else in this group is optional and only overrides BWIPP's built-in defaults",
+      },
+      {
+        name: "textfont",
+        label: "Text font",
+        kind: "text",
+        placeholder: "default: OCR-B",
+        hint: "Leave blank to use BWIPP's default (OCR-B for most symbologies)",
+      },
+      {
+        name: "textsize",
+        label: "Text size",
+        kind: "number",
+        min: 1,
+        step: 1,
+        hint: "Leave blank to use BWIPP's default (typically 10-12pt, varies by symbology)",
+      },
       { name: "textgaps", label: "Text character gaps", kind: "number", step: 0.1 },
       {
         name: "textxalign",
         label: "Text horizontal align",
         kind: "select",
         choices: [
-          { value: "", label: "(default)" },
+          { value: "", label: "(default — usually center)" },
           { value: "left", label: "Left" },
           { value: "center", label: "Center" },
           { value: "right", label: "Right" },
@@ -57,7 +75,7 @@ export const GENERIC_FIELD_GROUPS: FieldGroup[] = [
         label: "Text vertical align",
         kind: "select",
         choices: [
-          { value: "", label: "(default)" },
+          { value: "", label: "(default — usually below)" },
           { value: "below", label: "Below" },
           { value: "center", label: "Center" },
           { value: "above", label: "Above" },

@@ -31,10 +31,21 @@
           </select>
         </div>
 
-        <div class="row">
-          <div>
-            <label for="bcid">Symbology (BWIPP <code>bcid</code>)</label>
-            <select id="bcid"></select>
+        <div>
+          <label for="bcid-search">Symbology (BWIPP <code>bcid</code>)</label>
+          <div class="combobox" id="bcid-combobox">
+            <input
+              type="text"
+              id="bcid-search"
+              autocomplete="off"
+              spellcheck="false"
+              role="combobox"
+              aria-expanded="false"
+              aria-autocomplete="list"
+              aria-controls="bcid-dropdown"
+              placeholder="Search symbology (e.g. qr, code128, ean)…"
+            />
+            <div id="bcid-dropdown" class="combobox-dropdown" role="listbox" hidden></div>
           </div>
         </div>
 

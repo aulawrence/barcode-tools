@@ -1,8 +1,10 @@
 import bwipjs from "bwip-js/browser";
 import { GENERIC_FIELD_GROUPS, SYMBOLOGY_FIELDS, type FieldGroup, type FieldSpec } from "./symbology-options";
+import { categorizeSymbology, GROUP_ORDER } from "./symbology-groups";
 
 const presetSelect = document.querySelector<HTMLSelectElement>("#preset")!;
-const bcidSelect = document.querySelector<HTMLSelectElement>("#bcid")!;
+const bcidSearchInput = document.querySelector<HTMLInputElement>("#bcid-search")!;
+const bcidDropdown = document.querySelector<HTMLDivElement>("#bcid-dropdown")!;
 const textInput = document.querySelector<HTMLTextAreaElement>("#text")!;
 const symbologyFieldsWrap = document.querySelector<HTMLDivElement>("#symbology-fields-wrap")!;
 const symbologyFieldsTitle = document.querySelector<HTMLHeadingElement>("#symbology-fields-title")!;
@@ -16,14 +18,145 @@ const errorEl = document.querySelector<HTMLDivElement>("#error")!;
 const downloadPngBtn = document.querySelector<HTMLButtonElement>("#download-png")!;
 const downloadSvgBtn = document.querySelector<HTMLButtonElement>("#download-svg")!;
 
-// Populate the symbology dropdown straight from BWIPP's own symbol table,
-// so it never drifts out of sync with what the library actually supports.
-for (const sym of bwipjs.symbolList) {
-  const opt = document.createElement("option");
-  opt.value = sym.bcid;
-  opt.textContent = `${sym.bcid} — ${sym.desc}`;
-  bcidSelect.appendChild(opt);
+// --- symbology picker: searchable, grouped combobox ------------------------
+// Built from bwip-js's own symbol table, so it never drifts out of sync
+// with what the library actually supports (100+ entries — a flat <select>
+// was unusable, hence search + grouping instead of a plain dropdown).
+
+interface SymEntry {
+  bcid: string;
+  desc: string;
+  group: string;
 }
+
+const ALL_SYMBOLS: SymEntry[] = bwipjs.symbolList
+  .map((s) => ({ bcid: s.bcid, desc: s.desc, group: categorizeSymbology(s.bcid) }))
+  .sort((a, b) => a.bcid.localeCompare(b.bcid));
+
+let currentBcid = "qrcode";
+let activeOptionIndex = -1;
+
+function getBcid(): string {
+  return currentBcid;
+}
+
+function symbolLabel(entry: SymEntry): string {
+  return `${entry.bcid} — ${entry.desc}`;
+}
+
+function currentBcidLabel(): string {
+  const entry = ALL_SYMBOLS.find((s) => s.bcid === currentBcid);
+  return entry ? symbolLabel(entry) : currentBcid;
+}
+
+function matchesQuery(entry: SymEntry, query: string): boolean {
+  const q = query.toLowerCase();
+  return entry.bcid.toLowerCase().includes(q) || entry.desc.toLowerCase().includes(q);
+}
+
+function renderBcidDropdown(query: string) {
+  const q = query.trim();
+  const filtered = q ? ALL_SYMBOLS.filter((s) => matchesQuery(s, q)) : ALL_SYMBOLS;
+  activeOptionIndex = -1;
+  bcidDropdown.innerHTML = "";
+
+  if (filtered.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "combobox-empty";
+    empty.textContent = "No matching symbology.";
+    bcidDropdown.appendChild(empty);
+    return;
+  }
+
+  for (const group of GROUP_ORDER) {
+    const items = filtered.filter((s) => s.group === group);
+    if (items.length === 0) continue;
+    const header = document.createElement("div");
+    header.className = "combobox-group";
+    header.textContent = group;
+    bcidDropdown.appendChild(header);
+    for (const entry of items) {
+      const opt = document.createElement("div");
+      opt.className = "combobox-option";
+      opt.role = "option";
+      opt.textContent = symbolLabel(entry);
+      opt.dataset.bcid = entry.bcid;
+      // mousedown (not click) fires before the input's blur closes the dropdown.
+      opt.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        setBcid(entry.bcid);
+      });
+      bcidDropdown.appendChild(opt);
+    }
+  }
+}
+
+function openBcidDropdown() {
+  renderBcidDropdown(bcidSearchInput.value === currentBcidLabel() ? "" : bcidSearchInput.value);
+  bcidDropdown.hidden = false;
+  bcidSearchInput.setAttribute("aria-expanded", "true");
+}
+
+function closeBcidDropdown() {
+  bcidDropdown.hidden = true;
+  activeOptionIndex = -1;
+  bcidSearchInput.setAttribute("aria-expanded", "false");
+}
+
+function highlightOption(options: HTMLElement[]) {
+  options.forEach((o, i) => o.classList.toggle("active", i === activeOptionIndex));
+  options[activeOptionIndex]?.scrollIntoView({ block: "nearest" });
+}
+
+function setBcid(bcid: string, opts: { fireChange?: boolean } = {}) {
+  currentBcid = bcid;
+  bcidSearchInput.value = currentBcidLabel();
+  closeBcidDropdown();
+  if (opts.fireChange !== false) {
+    updateSymbologyFields();
+    render();
+  }
+}
+
+bcidSearchInput.addEventListener("focus", () => {
+  bcidSearchInput.select();
+  openBcidDropdown();
+});
+bcidSearchInput.addEventListener("input", () => {
+  renderBcidDropdown(bcidSearchInput.value);
+  bcidDropdown.hidden = false;
+});
+bcidSearchInput.addEventListener("blur", () => {
+  // Deferred so a mousedown on an option (above) runs first.
+  window.setTimeout(() => {
+    bcidSearchInput.value = currentBcidLabel();
+    closeBcidDropdown();
+  }, 0);
+});
+bcidSearchInput.addEventListener("keydown", (e) => {
+  if (bcidDropdown.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    openBcidDropdown();
+    return;
+  }
+  const options = Array.from(bcidDropdown.querySelectorAll<HTMLElement>(".combobox-option"));
+  if (options.length === 0) return;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    activeOptionIndex = Math.min(activeOptionIndex + 1, options.length - 1);
+    highlightOption(options);
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    activeOptionIndex = Math.max(activeOptionIndex - 1, 0);
+    highlightOption(options);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const target = options[activeOptionIndex >= 0 ? activeOptionIndex : 0];
+    if (target?.dataset.bcid) setBcid(target.dataset.bcid);
+  } else if (e.key === "Escape") {
+    bcidSearchInput.value = currentBcidLabel();
+    closeBcidDropdown();
+  }
+});
 
 // --- typed field rendering ---------------------------------------------
 
@@ -134,9 +267,9 @@ genericFieldsEl.addEventListener("input", () => renderDebounced());
 genericFieldsEl.addEventListener("change", () => renderDebounced());
 
 function updateSymbologyFields() {
-  const fields = SYMBOLOGY_FIELDS[bcidSelect.value];
+  const fields = SYMBOLOGY_FIELDS[getBcid()];
   if (fields && fields.length > 0) {
-    symbologyFieldsTitle.textContent = `"${bcidSelect.value}" settings`;
+    symbologyFieldsTitle.textContent = `"${getBcid()}" settings`;
     renderFields(symbologyFieldsEl, fields);
     symbologyFieldsWrap.hidden = false;
   } else {
@@ -186,7 +319,7 @@ presetSelect.addEventListener("change", () => {
   if (!presetSelect.value) return;
   const preset = PRESETS[Number(presetSelect.value)];
   if (!preset) return;
-  bcidSelect.value = preset.bcid;
+  setBcid(preset.bcid, { fireChange: false });
   updateSymbologyFields();
   resetFieldValues(genericFieldsEl);
   resetFieldValues(symbologyFieldsEl);
@@ -225,7 +358,7 @@ function buildOptions(): (Record<string, unknown> & { bcid: string; text: string
     // but-alpha-0 pixels, which most decoders (including zxing-wasm) read
     // as solid black and fail to scan.
     backgroundcolor: "FFFFFF",
-    bcid: bcidSelect.value,
+    bcid: getBcid(),
     text: textInput.value,
     ...typedFieldValues(),
     ...jsonOptions,
@@ -257,10 +390,6 @@ function renderDebounced() {
 }
 
 renderBtn.addEventListener("click", render);
-bcidSelect.addEventListener("change", () => {
-  updateSymbologyFields();
-  render();
-});
 textInput.addEventListener("input", renderDebounced);
 optionsInput.addEventListener("input", renderDebounced);
 
@@ -275,7 +404,7 @@ function downloadBlob(blob: Blob, filename: string) {
 
 downloadPngBtn.addEventListener("click", () => {
   canvas.toBlob((blob) => {
-    if (blob) downloadBlob(blob, `${bcidSelect.value}.png`);
+    if (blob) downloadBlob(blob, `${getBcid()}.png`);
   });
 });
 
@@ -284,14 +413,14 @@ downloadSvgBtn.addEventListener("click", () => {
   if (options === undefined) return;
   try {
     const svg = bwipjs.toSVG(options as Parameters<typeof bwipjs.toSVG>[0]);
-    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `${bcidSelect.value}.svg`);
+    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `${getBcid()}.svg`);
   } catch (err) {
     errorEl.textContent = err instanceof Error ? err.message : String(err);
   }
 });
 
 // Initial state.
-bcidSelect.value = "qrcode";
+setBcid("qrcode", { fireChange: false });
 textInput.value = "https://github.com";
 optionsInput.value = "{}";
 updateSymbologyFields();

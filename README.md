@@ -34,9 +34,11 @@ nothing uploaded anywhere), deployable as a static site to GitHub Pages.
     frame for video/camera.
 - **Generate** (`generate.html`) — a thin wrapper around
   [BWIPP](https://github.com/bwipp/postscriptbarcode/wiki) via
-  [`bwip-js`](https://github.com/metafloor/bwip-js). Pick a symbology (the
-  list is pulled straight from `bwip-js`'s own symbol table) and type the
-  data; settings appear as proper form controls in two tiers, defined in
+  [`bwip-js`](https://github.com/metafloor/bwip-js). Pick a symbology — a
+  searchable, grouped combobox (`src/symbology-groups.ts`) over all 100+ of
+  BWIPP's symbologies, since a flat `<select>` of that size isn't usable —
+  and type the data; settings appear as proper form controls in two tiers,
+  defined in
   [`src/symbology-options.ts`](src/symbology-options.ts):
   - **Common settings** — text/size/color/border/padding/FNC-parsing
     options that apply to nearly every symbology, sourced from bwip-js's
