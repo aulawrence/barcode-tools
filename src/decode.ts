@@ -30,8 +30,11 @@ const resultsEl = document.querySelector<HTMLDivElement>("#results")!;
 const interruptBtn = document.querySelector<HTMLButtonElement>("#interrupt-btn")!;
 const videoEl = document.querySelector<HTMLVideoElement>("#video-source")!;
 
+const saveImageControls = document.querySelector<HTMLDivElement>("#save-image-controls")!;
+const saveImageBtn = document.querySelector<HTMLButtonElement>("#save-image-btn")!;
+
 const formatCheckboxesEl = document.querySelector<HTMLDivElement>("#format-checkboxes")!;
-const formatClearBtn = document.querySelector<HTMLButtonElement>("#format-clear")!;
+const formatToggleAllBtn = document.querySelector<HTMLButtonElement>("#format-toggle-all")!;
 const formatFilterSummary = document.querySelector<HTMLSpanElement>("#format-filter-summary")!;
 
 const pdfControls = document.querySelector<HTMLDivElement>("#pdf-controls")!;
@@ -46,11 +49,13 @@ const videoControls = document.querySelector<HTMLDivElement>("#video-controls")!
 const videoScanBtn = document.querySelector<HTMLButtonElement>("#video-scan-btn")!;
 const videoFileOnly = document.querySelector<HTMLDivElement>("#video-file-only")!;
 const videoFileOnly2 = document.querySelector<HTMLDivElement>("#video-file-only-2")!;
+const videoFrameNote = document.querySelector<HTMLParagraphElement>("#video-frame-note")!;
 const videoRestartBtn = document.querySelector<HTMLButtonElement>("#video-restart-btn")!;
 const videoFrameInput = document.querySelector<HTMLInputElement>("#video-frame-input")!;
 const videoFrameGoBtn = document.querySelector<HTMLButtonElement>("#video-frame-go")!;
 const cameraOnly = document.querySelector<HTMLDivElement>("#camera-only")!;
 const cameraStopBtn = document.querySelector<HTMLButtonElement>("#camera-stop-btn")!;
+const cameraFlipBtn = document.querySelector<HTMLButtonElement>("#camera-flip-btn")!;
 const videoFrameLabel = document.querySelector<HTMLParagraphElement>("#video-frame-label")!;
 
 type Mode = "image" | "pdf" | "video" | "camera";
@@ -62,6 +67,14 @@ let videoSession: VideoSession | null = null;
 let activeAbort: AbortController | null = null;
 let busy = false;
 let foundOnceInVideo = false;
+
+// Mirroring is purely cosmetic (a natural "look in the mirror" aiming view
+// for a user-facing camera/webcam) and only ever applied to the live,
+// still-scanning preview — never to a paused frame with a found barcode's
+// overlay drawn on it, since flipping that would make the overlay's text
+// label unreadable and doesn't reflect the actual captured orientation.
+let mirrorCameraPreview = false;
+let cameraPreviewIsLive = false;
 
 // --- barcode type filter -----------------------------------------------
 
@@ -76,10 +89,10 @@ for (const format of barcodeFormats) {
   formatCheckboxesEl.appendChild(label);
 }
 
-formatClearBtn.addEventListener("click", () => {
-  formatCheckboxesEl
-    .querySelectorAll<HTMLInputElement>("input[type=checkbox]")
-    .forEach((cb) => (cb.checked = false));
+formatToggleAllBtn.addEventListener("click", () => {
+  const checkboxes = formatCheckboxesEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]");
+  const allChecked = Array.from(checkboxes).every((cb) => cb.checked);
+  checkboxes.forEach((cb) => (cb.checked = !allChecked));
   onFormatFilterChange();
 });
 
@@ -93,6 +106,7 @@ function onFormatFilterChange() {
   const selected = getSelectedFormats();
   setActiveFormats(selected);
   formatFilterSummary.textContent = selected.length === 0 ? "(optional)" : `(${selected.length} selected)`;
+  formatToggleAllBtn.textContent = selected.length === barcodeFormats.length ? "Clear all" : "Select all";
   // Re-run decoding on whatever's already on screen so the filter takes
   // effect immediately; video/camera scanning just picks it up on the next
   // frame it decodes.
@@ -134,6 +148,7 @@ function resetModeUI() {
   videoControls.hidden = true;
   interruptBtn.hidden = true;
   previewWrap.hidden = true;
+  saveImageControls.hidden = true;
   pdfAnnotateStatus.textContent = "";
   videoFrameLabel.textContent = "";
   videoFrameLabel.hidden = false;
@@ -144,6 +159,8 @@ function resetModeUI() {
   currentImageBitmap = null;
   pdfSession = null;
   foundOnceInVideo = false;
+  cameraPreviewIsLive = false;
+  canvas.classList.remove("mirrored");
   cameraBtn.hidden = false;
   cameraBtn.disabled = false;
   cameraBtn.textContent = "Use camera";
@@ -320,6 +337,7 @@ async function handleVideoFile(file: File) {
   videoControls.hidden = false;
   videoFileOnly.hidden = false;
   videoFileOnly2.hidden = false;
+  videoFrameNote.hidden = false;
   cameraOnly.hidden = true;
   videoScanBtn.textContent = "Find first barcode";
   canvas.width = videoEl.videoWidth;
@@ -353,10 +371,19 @@ async function handleCameraStart() {
     cameraBtn.textContent = "Use camera";
     return;
   }
+  const track = videoSession.source.kind === "camera" ? videoSession.source.stream.getVideoTracks()[0] : undefined;
+  const facingMode = track?.getSettings().facingMode;
+  // Phones report 'environment' for the rear camera we requested. A
+  // laptop/desktop webcam — or a front camera a device fell back to —
+  // typically reports 'user' or nothing at all; either way, mirror the
+  // preview for a natural "look in a mirror" aiming view. "Flip preview"
+  // below lets the user override this guess.
+  mirrorCameraPreview = facingMode !== "environment";
   cameraBtn.hidden = true; // "Stop camera" below takes over from here
   videoControls.hidden = false;
   videoFileOnly.hidden = true;
   videoFileOnly2.hidden = true;
+  videoFrameNote.hidden = true;
   cameraOnly.hidden = false;
   videoFrameLabel.hidden = true; // frame/time counters aren't meaningful for a live camera stream
   videoScanBtn.textContent = "Scanning…";
@@ -369,6 +396,14 @@ async function handleCameraStart() {
   videoControls.scrollIntoView({ behavior: "smooth", block: "start" });
   await runVideoScan();
 }
+
+cameraFlipBtn.addEventListener("click", () => {
+  mirrorCameraPreview = !mirrorCameraPreview;
+  // Only take effect immediately while a live, still-scanning feed is on
+  // screen; if a found/paused frame is showing, the new preference just
+  // applies the next time scanning resumes.
+  if (cameraPreviewIsLive) canvas.classList.toggle("mirrored", mirrorCameraPreview);
+});
 
 cameraStopBtn.addEventListener("click", () => {
   resetModeUI();
@@ -389,12 +424,24 @@ async function runVideoScan() {
   const abort = new AbortController();
   activeAbort = abort;
   statusEl.textContent = "Scanning…";
+  hideSaveControls();
+
+  if (isCamera) {
+    cameraPreviewIsLive = true;
+    canvas.classList.toggle("mirrored", mirrorCameraPreview);
+  }
 
   try {
-    const outcome = await scanForward(sessionAtStart, canvas, abort.signal, ({ frameIndex, timeSeconds }) => {
-      if (videoSession !== sessionAtStart || isCamera) return;
-      videoFrameLabel.textContent = `Scanning… frame ${frameIndex} (t=${timeSeconds.toFixed(2)}s)`;
-    });
+    const outcome = await scanForward(
+      sessionAtStart,
+      canvas,
+      abort.signal,
+      ({ frameIndex, timeSeconds }) => {
+        if (videoSession !== sessionAtStart || isCamera) return;
+        videoFrameLabel.textContent = `Scanning… frame ${frameIndex} (t=${timeSeconds.toFixed(2)}s)`;
+      },
+      foundOnceInVideo,
+    );
 
     // The session may have been closed/replaced (e.g. "Stop camera", or a
     // new file dropped) while this scan was in flight — don't clobber
@@ -416,6 +463,7 @@ async function runVideoScan() {
         isCamera ? "" : ` at frame ${outcome.frame.frameIndex}`
       }.`;
       renderResultCards(resultsEl, outcome.results);
+      if (isCamera) showSaveControls();
     } else if (outcome.status === "ended") {
       videoScanBtn.textContent = isCamera ? "Scan for barcode" : "Find first barcode";
       statusEl.textContent = foundOnceInVideo
@@ -428,6 +476,10 @@ async function runVideoScan() {
         : `Interrupted at frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s).`;
     }
   } finally {
+    if (isCamera) {
+      cameraPreviewIsLive = false;
+      canvas.classList.remove("mirrored");
+    }
     busy = false;
     setVideoControlsDisabled(false);
     interruptBtn.hidden = true;
@@ -477,6 +529,40 @@ videoFrameGoBtn.addEventListener("click", async () => {
     busy = false;
     setVideoControlsDisabled(false);
   }
+});
+
+// --- saving the current frame -----------------------------------------------
+
+function downloadCanvas(source: HTMLCanvasElement, filename: string) {
+  source.toBlob((blob) => {
+    if (blob) downloadBlob(blob, filename);
+  }, "image/png");
+}
+
+/** e.g. "2026-09-13_14-32-05", filesystem-safe and sorts chronologically. */
+function timestampForFilename(): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+}
+
+function showSaveControls() {
+  saveImageControls.hidden = false;
+}
+
+function hideSaveControls() {
+  saveImageControls.hidden = true;
+}
+
+saveImageBtn.addEventListener("click", () => {
+  // Re-draw straight from the (paused, still showing this exact frame)
+  // video element rather than `canvas`, since `canvas` may have the found
+  // barcode's overlay drawn onto it — this should be the raw capture.
+  const raw = document.createElement("canvas");
+  raw.width = canvas.width;
+  raw.height = canvas.height;
+  raw.getContext("2d")!.drawImage(videoEl, 0, 0, raw.width, raw.height);
+  downloadCanvas(raw, `barcode-scan-${timestampForFilename()}.png`);
 });
 
 function setVideoControlsDisabled(disabled: boolean) {

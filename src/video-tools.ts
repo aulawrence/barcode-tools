@@ -96,12 +96,20 @@ export interface ScanResult {
  * where supported (most Chromium browsers); elsewhere falls back to
  * time-based sampling during playback, since browsers otherwise expose no
  * way to step through actual encoded frames.
+ *
+ * `requireCleanFrameFirst` should be set when resuming after a previous
+ * find (e.g. "scan for next barcode"): a live camera view hasn't moved yet
+ * when playback resumes, so the very next frame would otherwise re-decode
+ * the same barcode and resolve instantly, making the resume look like a
+ * no-op. Set it to wait for at least one barcode-free frame before a new
+ * match is allowed to settle.
  */
 export function scanForward(
   session: VideoSession,
   canvas: HTMLCanvasElement,
   signal: AbortSignal,
   onFrame?: (frame: FrameInfo) => void,
+  requireCleanFrameFirst = false,
 ): Promise<ScanResult> {
   const { video } = session;
   canvas.width = video.videoWidth;
@@ -137,6 +145,8 @@ export function scanForward(
     video.addEventListener("ended", onEnded);
     signal.addEventListener("abort", onAbort);
 
+    let sawCleanFrame = !requireCleanFrameFirst;
+
     if (session.usesFrameCallback) {
       const onVideoFrame: VideoFrameRequestCallback = (_now, metadata) => {
         if (settled) return;
@@ -147,13 +157,14 @@ export function scanForward(
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         void decodeImage(ctx.getImageData(0, 0, canvas.width, canvas.height)).then((results) => {
           if (settled) return;
-          if (results.length > 0) {
+          if (results.length > 0 && sawCleanFrame) {
             drawOverlay(ctx, canvas.width, results);
             settled = true;
             video.pause();
             cleanup();
             resolve({ status: "found", frame: { frameIndex, timeSeconds: metadata.mediaTime }, results });
           } else {
+            if (results.length === 0) sawCleanFrame = true;
             video.requestVideoFrameCallback(onVideoFrame);
           }
         });
@@ -171,13 +182,15 @@ export function scanForward(
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         void decodeImage(ctx.getImageData(0, 0, canvas.width, canvas.height)).then((results) => {
           if (settled) return;
-          if (results.length > 0) {
+          if (results.length > 0 && sawCleanFrame) {
             drawOverlay(ctx, canvas.width, results);
             settled = true;
             video.pause();
             video.removeEventListener("timeupdate", onTimeUpdate);
             cleanup();
             resolve({ status: "found", frame: { frameIndex, timeSeconds: video.currentTime }, results });
+          } else if (results.length === 0) {
+            sawCleanFrame = true;
           }
         });
       };

@@ -43,7 +43,7 @@
           <summary>Limit to specific barcode types <span id="format-filter-summary">(optional)</span></summary>
           <div id="format-checkboxes" class="format-grid"></div>
           <div class="row">
-            <button type="button" id="format-clear" class="secondary">Clear (scan all types)</button>
+            <button type="button" id="format-toggle-all" class="secondary">Select all</button>
           </div>
         </details>
 
@@ -66,7 +66,7 @@
         </div>
 
         <div id="video-controls" class="mode-controls" hidden>
-          <p class="lede">
+          <p id="video-frame-note" class="lede" hidden>
             Browsers don't expose true random-access frame numbers, so frame
             counts here are best-effort: exact while actively scanning
             forward (measured from real playback), approximate when jumping
@@ -87,6 +87,7 @@
           </div>
           <div id="camera-only" class="row" hidden>
             <button type="button" id="camera-stop-btn" class="secondary">Stop camera</button>
+            <button type="button" id="camera-flip-btn" class="secondary">Flip preview</button>
           </div>
           <p id="video-frame-label" class="lede"></p>
         </div>
@@ -97,6 +98,10 @@
 
         <div id="preview-wrap" class="preview-wrap" hidden>
           <canvas id="preview-canvas"></canvas>
+        </div>
+
+        <div id="save-image-controls" class="row" hidden>
+          <button type="button" id="save-image-btn" class="secondary">Save image</button>
         </div>
 
         <div id="status"></div>
