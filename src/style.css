@@ -1,0 +1,303 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --fg: #1b1b18;
+  --muted: #666;
+  --accent: #ff5c00;
+  --border: #ddd;
+  --card-bg: #fff;
+  --code-bg: #f0f0ee;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16161a;
+    --fg: #e9e9e7;
+    --muted: #999;
+    --border: #333;
+    --card-bg: #202024;
+    --code-bg: #101012;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  margin-left: 1.25rem;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+nav a:first-child {
+  margin-left: 0;
+}
+
+nav a:hover,
+nav a.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+.lede {
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 2rem 0 0.75rem;
+}
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.drop-zone.dragover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.drop-zone input {
+  display: none;
+}
+
+.preview-wrap {
+  margin-top: 1.25rem;
+  overflow-x: auto;
+}
+
+.preview-wrap canvas {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+#status {
+  margin-top: 0.75rem;
+  color: var(--muted);
+  min-height: 1.2em;
+}
+
+.result-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  margin-top: 1rem;
+}
+
+.result-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.result-card .sym {
+  font-weight: normal;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.result-card dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.result-card dt {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.result-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.error {
+  color: #c0392b;
+}
+
+code {
+  background: var(--code-bg);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+form.gen-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 100%;
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+select,
+textarea,
+button,
+input[type="text"] {
+  font: inherit;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--fg);
+}
+
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+
+#options {
+  min-height: 6rem;
+}
+
+#text {
+  min-height: 3rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.row > * {
+  flex: 1;
+  min-width: 200px;
+}
+
+button {
+  cursor: pointer;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  width: auto;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.output-wrap {
+  margin-top: 0.5rem;
+  padding: 1.25rem;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  text-align: center;
+}
+
+.output-wrap canvas {
+  max-width: 100%;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.card-grid a {
+  display: block;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--fg);
+  background: var(--card-bg);
+}
+
+.card-grid a:hover {
+  border-color: var(--accent);
+}
+
+.card-grid h3 {
+  margin: 0 0 0.4rem;
+}
+
+.card-grid p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+footer {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+footer a {
+  color: inherit;
+}

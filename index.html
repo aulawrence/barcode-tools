@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Barcode Tools</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1><a href="./index.html">Barcode Tools</a></h1>
+      <nav>
+        <a href="./decode.html">Decode</a>
+        <a href="./generate.html">Generate</a>
+      </nav>
+    </header>
+    <main>
+      <p class="lede">
+        Two small barcode utilities that run entirely client-side — no server,
+        no upload, nothing leaves your browser.
+      </p>
+      <div class="card-grid">
+        <a href="./decode.html">
+          <h3>Decode →</h3>
+          <p>
+            Upload an image and decode every barcode on it, including
+            function characters (FNC1–4) and other non-printable payload
+            bytes, via a WebAssembly build of
+            <code>zxing-cpp</code>.
+          </p>
+        </a>
+        <a href="./generate.html">
+          <h3>Generate →</h3>
+          <p>
+            A thin browser wrapper around
+            <a
+              href="https://github.com/bwipp/postscriptbarcode/wiki"
+              target="_blank"
+              rel="noopener"
+              >BWIPP</a
+            >
+            (via <code>bwip-js</code>) — pick a symbology, pass raw options,
+            get a PNG or SVG.
+          </p>
+        </a>
+      </div>
+    </main>
+    <footer>
+      Barcode decoding by
+      <a href="https://github.com/zxing-cpp/zxing-cpp" target="_blank" rel="noopener">zxing-cpp</a>
+      (via
+      <a href="https://github.com/Sec-ant/zxing-wasm" target="_blank" rel="noopener">zxing-wasm</a>).
+      Barcode generation by
+      <a href="https://github.com/bwipp/postscriptbarcode" target="_blank" rel="noopener">BWIPP</a>
+      (via
+      <a href="https://github.com/metafloor/bwip-js" target="_blank" rel="noopener">bwip-js</a>).
+    </footer>
+  </body>
+</html>

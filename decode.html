@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Decode — Barcode Tools</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1><a href="./index.html">Barcode Tools</a></h1>
+      <nav>
+        <a href="./decode.html" class="active">Decode</a>
+        <a href="./generate.html">Generate</a>
+      </nav>
+    </header>
+    <main>
+      <p class="lede">
+        Upload an image containing one or more barcodes. Decoding runs
+        entirely in your browser via WebAssembly — the image is never sent
+        anywhere. Non-printable payload bytes (FNC1–4, GS1 separators, etc.)
+        are shown explicitly rather than silently dropped.
+      </p>
+
+      <div id="drop-zone" class="drop-zone">
+        <input type="file" id="file-input" accept="image/*" />
+        <p>Drop an image here, or click to choose a file.</p>
+      </div>
+
+      <div id="preview-wrap" class="preview-wrap" hidden>
+        <canvas id="preview-canvas"></canvas>
+      </div>
+
+      <div id="status"></div>
+      <div id="results"></div>
+    </main>
+    <script type="module" src="./src/decode.ts"></script>
+  </body>
+</html>
