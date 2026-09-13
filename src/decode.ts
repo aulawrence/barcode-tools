@@ -17,6 +17,9 @@ import {
   type VideoSession,
 } from "./video-tools";
 
+const introView = document.querySelector<HTMLDivElement>("#intro-view")!;
+const sessionView = document.querySelector<HTMLDivElement>("#session-view")!;
+const backBtn = document.querySelector<HTMLButtonElement>("#back-btn")!;
 const fileInput = document.querySelector<HTMLInputElement>("#file-input")!;
 const dropZone = document.querySelector<HTMLDivElement>("#drop-zone")!;
 const cameraBtn = document.querySelector<HTMLButtonElement>("#camera-btn")!;
@@ -127,8 +130,10 @@ function resetModeUI() {
   pdfControls.hidden = true;
   videoControls.hidden = true;
   interruptBtn.hidden = true;
+  previewWrap.hidden = true;
   pdfAnnotateStatus.textContent = "";
   videoFrameLabel.textContent = "";
+  statusEl.textContent = "";
   resultsEl.innerHTML = "";
   currentMode = null;
   currentImageBitmap = null;
@@ -145,8 +150,25 @@ function resetModeUI() {
   activeAbort = null;
 }
 
+function showSessionView() {
+  introView.hidden = true;
+  sessionView.hidden = false;
+}
+
+function showIntroView() {
+  sessionView.hidden = true;
+  introView.hidden = false;
+}
+
+backBtn.addEventListener("click", () => {
+  resetModeUI();
+  fileInput.value = "";
+  showIntroView();
+});
+
 async function handleFile(file: File) {
   resetModeUI();
+  showSessionView();
   const mode = detectMode(file);
 
   if (mode === "pdf") return void handlePdfFile(file);
@@ -300,6 +322,7 @@ cameraBtn.addEventListener("click", () => void handleCameraStart());
 
 async function handleCameraStart() {
   resetModeUI();
+  showSessionView();
   currentMode = "camera";
   cameraBtn.disabled = true;
   cameraBtn.textContent = "Starting camera…";
@@ -332,8 +355,8 @@ async function handleCameraStart() {
 cameraStopBtn.addEventListener("click", () => {
   resetModeUI();
   busy = false;
-  previewWrap.hidden = true;
-  statusEl.textContent = "Camera stopped.";
+  fileInput.value = "";
+  showIntroView();
 });
 
 // --- shared video/camera scanning ------------------------------------------
