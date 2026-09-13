@@ -16,16 +16,18 @@ nothing uploaded anywhere), deployable as a static site to GitHub Pages.
   and pass any BWIPP option as raw JSON — the same option names as the BWIPP
   wiki (`parsefnc`, `eclevel`, `version`, etc.).
 
-## Known limitation: FNC2/FNC3/FNC4 and vendor macros on decode
+## Known limitation: which FNC value, on decode
 
-`zxing-cpp` decodes Code128 FNC1 into a GS1 separator, but it consumes
-FNC2/FNC3/FNC4 and DataMatrix "programming" macros (e.g. Zebra's `^PROG`
-scanner-config barcodes) without exposing them in `text`/`bytes` — they're
-silently stripped rather than shown as control bytes. A dedicated decoder
-(e.g. `pylibdmtx`, used in a companion Python project) can expose these, but
-has no WebAssembly build, so this browser tool can't currently surface them.
-For that class of barcode, the payload after the marker still decodes fine —
-just without an indication that a marker was present.
+`zxing-cpp` decodes Code128 FNC1 into a GS1 separator (shown in the escaped
+text), and exposes Code128 FNC3 / DataMatrix reader-programming symbols
+(e.g. Zebra's `^PROG` scanner-config barcodes) via a `readerInit` flag,
+shown as a "READER PROGRAMMING" badge on the Decode page. What it does
+*not* expose is which specific FNC value (2, 3, or 4) triggered that flag,
+or FNC2/FNC4 as distinct markers at all — they're consumed during decoding
+rather than left in `text`/`bytes`. A dedicated decoder (e.g. `pylibdmtx`,
+used in a companion Python project) can distinguish these at a lower level,
+but has no WebAssembly build, so this browser tool can't currently surface
+that distinction. The payload itself always decodes correctly either way.
 
 ## Development
 

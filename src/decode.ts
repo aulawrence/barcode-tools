@@ -100,12 +100,17 @@ async function handleFile(file: File) {
     card.innerHTML = `
       <h3>#${i + 1} — ${escapeHtml(r.format)}${
         r.symbologyIdentifier ? ` <span class="sym">${escapeHtml(r.symbologyIdentifier)}</span>` : ""
-      }</h3>
+      }${r.readerInit ? ` <span class="badge">READER PROGRAMMING</span>` : ""}</h3>
       ${r.error ? `<p class="error">Error: ${escapeHtml(r.error)}</p>` : ""}
       <dl>
         <dt>Text</dt><dd><code>${escapeHtml(r.text)}</code></dd>
         <dt>Raw bytes (hex)</dt><dd><code>${hex}</code></dd>
         <dt>Raw bytes (escaped)</dt><dd><code>${escapeHtml(escaped)}</code></dd>
+        <dt>Reader programming flag</dt><dd>${
+          r.readerInit
+            ? "yes — this symbol carries Code128 FNC3 / DataMatrix reader-init (e.g. Zebra <code>^PROG</code>), so it's a scanner command, not plain data"
+            : "no"
+        }</dd>
         <dt>EC level</dt><dd>${r.ecLevel || "—"}</dd>
         <dt>Position</dt><dd>${[topLeft, topRight, bottomRight, bottomLeft]
           .map((p) => `(${Math.round(p.x)},${Math.round(p.y)})`)

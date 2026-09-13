@@ -143,6 +143,18 @@ h2 {
   font-size: 0.85em;
 }
 
+.badge {
+  display: inline-block;
+  font-size: 0.7em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 0.15em 0.5em;
+  vertical-align: middle;
+}
+
 .result-card dl {
   display: grid;
   grid-template-columns: max-content 1fr;
