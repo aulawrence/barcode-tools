@@ -1,13 +1,6 @@
-import { prepareZXingModule, readBarcodes, type ReadResult } from "zxing-wasm/reader";
-import zxingReaderWasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
-
-// Self-host the wasm binary instead of the library's default (jsDelivr CDN)
-// fetch, so decoding works fully offline once the page has loaded.
-prepareZXingModule({
-  overrides: {
-    locateFile: (path) => (path.endsWith(".wasm") ? zxingReaderWasmUrl : path),
-  },
-});
+import { decodeImage, drawOverlay, renderResultCards, type ReadResult } from "./barcode-reader";
+import { annotatePdf, openPdf, renderAndDecodePage, type PdfSession } from "./pdf-tools";
+import { closeVideo, openVideo, scanForward, seekToFrame, type VideoSession } from "./video-tools";
 
 const fileInput = document.querySelector<HTMLInputElement>("#file-input")!;
 const dropZone = document.querySelector<HTMLDivElement>("#drop-zone")!;
@@ -15,6 +8,32 @@ const previewWrap = document.querySelector<HTMLDivElement>("#preview-wrap")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#preview-canvas")!;
 const statusEl = document.querySelector<HTMLDivElement>("#status")!;
 const resultsEl = document.querySelector<HTMLDivElement>("#results")!;
+const interruptBtn = document.querySelector<HTMLButtonElement>("#interrupt-btn")!;
+const videoEl = document.querySelector<HTMLVideoElement>("#video-source")!;
+
+const pdfControls = document.querySelector<HTMLDivElement>("#pdf-controls")!;
+const pdfPrevBtn = document.querySelector<HTMLButtonElement>("#pdf-prev")!;
+const pdfNextBtn = document.querySelector<HTMLButtonElement>("#pdf-next")!;
+const pdfPageInput = document.querySelector<HTMLInputElement>("#pdf-page-input")!;
+const pdfPageLabel = document.querySelector<HTMLParagraphElement>("#pdf-page-label")!;
+const pdfAnnotateBtn = document.querySelector<HTMLButtonElement>("#pdf-annotate-btn")!;
+const pdfAnnotateStatus = document.querySelector<HTMLParagraphElement>("#pdf-annotate-status")!;
+
+const videoControls = document.querySelector<HTMLDivElement>("#video-controls")!;
+const videoScanBtn = document.querySelector<HTMLButtonElement>("#video-scan-btn")!;
+const videoRestartBtn = document.querySelector<HTMLButtonElement>("#video-restart-btn")!;
+const videoFrameInput = document.querySelector<HTMLInputElement>("#video-frame-input")!;
+const videoFrameGoBtn = document.querySelector<HTMLButtonElement>("#video-frame-go")!;
+const videoFrameLabel = document.querySelector<HTMLParagraphElement>("#video-frame-label")!;
+
+type Mode = "image" | "pdf" | "video";
+
+let pdfSession: PdfSession | null = null;
+let videoSession: VideoSession | null = null;
+let activeAbort: AbortController | null = null;
+let busy = false;
+
+// --- file intake -----------------------------------------------------------
 
 dropZone.addEventListener("click", () => fileInput.click());
 dropZone.addEventListener("dragover", (e) => {
@@ -33,23 +52,42 @@ fileInput.addEventListener("change", () => {
   if (file) void handleFile(file);
 });
 
-function formatBytes(bytes: Uint8Array): { hex: string; escaped: string } {
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join(" ");
-  const escaped = Array.from(bytes)
-    .map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : `\\x${b.toString(16).padStart(2, "0")}`))
-    .join("");
-  return { hex, escaped };
+function detectMode(file: File): Mode {
+  const name = file.name.toLowerCase();
+  if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
+  if (file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|avi|mkv)$/.test(name)) return "video";
+  return "image";
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function resetModeUI() {
+  pdfControls.hidden = true;
+  videoControls.hidden = true;
+  interruptBtn.hidden = true;
+  pdfAnnotateStatus.textContent = "";
+  videoFrameLabel.textContent = "";
+  resultsEl.innerHTML = "";
+  pdfSession = null;
+  if (videoSession) {
+    closeVideo(videoSession);
+    videoSession = null;
+  }
+  activeAbort?.abort();
+  activeAbort = null;
 }
 
 async function handleFile(file: File) {
+  resetModeUI();
+  const mode = detectMode(file);
+
+  if (mode === "pdf") return void handlePdfFile(file);
+  if (mode === "video") return void handleVideoFile(file);
+  return void handleImageFile(file);
+}
+
+// --- image mode --------------------------------------------------------
+
+async function handleImageFile(file: File) {
   statusEl.textContent = "Decoding…";
-  resultsEl.innerHTML = "";
 
   const bitmap = await createImageBitmap(file);
   canvas.width = bitmap.width;
@@ -58,65 +96,213 @@ async function handleFile(file: File) {
   ctx.drawImage(bitmap, 0, 0);
   previewWrap.hidden = false;
 
-  let results: ReadResult[];
   try {
-    results = await readBarcodes(file, {
-      tryHarder: true,
-      maxNumberOfSymbols: 32,
-      returnErrors: true,
-      textMode: "Escaped",
-    });
+    const results = await decodeImage(file);
+    reportResults(results, canvas.width, ctx);
   } catch (err) {
     statusEl.textContent = `Decode failed: ${err instanceof Error ? err.message : String(err)}`;
-    return;
   }
+}
 
+function reportResults(results: ReadResult[], width: number, ctx: CanvasRenderingContext2D) {
   if (results.length === 0) {
     statusEl.textContent = "No barcodes found.";
     return;
   }
   statusEl.textContent = `Found ${results.length} barcode${results.length === 1 ? "" : "s"}.`;
+  drawOverlay(ctx, width, results);
+  renderResultCards(resultsEl, results);
+}
 
-  ctx.lineWidth = Math.max(2, bitmap.width / 400);
-  ctx.strokeStyle = "#ff5c00";
-  ctx.fillStyle = "#ff5c00";
-  ctx.font = `${Math.max(14, Math.round(bitmap.width / 60))}px monospace`;
-  ctx.textBaseline = "bottom";
+// --- pdf mode ------------------------------------------------------------
 
-  results.forEach((r, i) => {
-    const { topLeft, topRight, bottomRight, bottomLeft } = r.position;
-    ctx.beginPath();
-    ctx.moveTo(topLeft.x, topLeft.y);
-    ctx.lineTo(topRight.x, topRight.y);
-    ctx.lineTo(bottomRight.x, bottomRight.y);
-    ctx.lineTo(bottomLeft.x, bottomLeft.y);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fillText(`#${i + 1} ${r.format}`, topLeft.x, Math.max(0, topLeft.y - 4));
+async function handlePdfFile(file: File) {
+  statusEl.textContent = "Loading PDF…";
+  try {
+    pdfSession = await openPdf(file);
+  } catch (err) {
+    statusEl.textContent = `Could not open PDF: ${err instanceof Error ? err.message : String(err)}`;
+    return;
+  }
+  pdfControls.hidden = false;
+  pdfPageInput.max = String(pdfSession.numPages);
+  previewWrap.hidden = false;
+  await goToPdfPage(1);
+}
 
-    const { hex, escaped } = formatBytes(r.bytes);
-    const card = document.createElement("article");
-    card.className = "result-card";
-    card.innerHTML = `
-      <h3>#${i + 1} — ${escapeHtml(r.format)}${
-        r.symbologyIdentifier ? ` <span class="sym">${escapeHtml(r.symbologyIdentifier)}</span>` : ""
-      }${r.readerInit ? ` <span class="badge">READER PROGRAMMING</span>` : ""}</h3>
-      ${r.error ? `<p class="error">Error: ${escapeHtml(r.error)}</p>` : ""}
-      <dl>
-        <dt>Text</dt><dd><code>${escapeHtml(r.text)}</code></dd>
-        <dt>Raw bytes (hex)</dt><dd><code>${hex}</code></dd>
-        <dt>Raw bytes (escaped)</dt><dd><code>${escapeHtml(escaped)}</code></dd>
-        <dt>Reader programming flag</dt><dd>${
-          r.readerInit
-            ? "yes — this symbol carries Code128 FNC3 / DataMatrix reader-init (e.g. Zebra <code>^PROG</code>), so it's a scanner command, not plain data"
-            : "no"
-        }</dd>
-        <dt>EC level</dt><dd>${r.ecLevel || "—"}</dd>
-        <dt>Position</dt><dd>${[topLeft, topRight, bottomRight, bottomLeft]
-          .map((p) => `(${Math.round(p.x)},${Math.round(p.y)})`)
-          .join(" ")}</dd>
-      </dl>
-    `;
-    resultsEl.appendChild(card);
-  });
+async function goToPdfPage(pageNum: number) {
+  if (!pdfSession) return;
+  pageNum = Math.min(Math.max(pageNum, 1), pdfSession.numPages);
+  pdfPageInput.value = String(pageNum);
+  pdfPageLabel.textContent = `Page ${pageNum} of ${pdfSession.numPages}`;
+  statusEl.textContent = "Rendering page…";
+  resultsEl.innerHTML = "";
+
+  const results = await renderAndDecodePage(pdfSession, pageNum, canvas);
+  statusEl.textContent =
+    results.length === 0
+      ? "No barcodes found on this page."
+      : `Found ${results.length} barcode${results.length === 1 ? "" : "s"} on this page.`;
+  renderResultCards(resultsEl, results);
+}
+
+pdfPrevBtn.addEventListener("click", () => void goToPdfPage(Number(pdfPageInput.value) - 1));
+pdfNextBtn.addEventListener("click", () => void goToPdfPage(Number(pdfPageInput.value) + 1));
+pdfPageInput.addEventListener("change", () => void goToPdfPage(Number(pdfPageInput.value) || 1));
+
+pdfAnnotateBtn.addEventListener("click", async () => {
+  if (!pdfSession || busy) return;
+  busy = true;
+  pdfAnnotateBtn.disabled = true;
+  interruptBtn.hidden = false;
+  const abort = new AbortController();
+  activeAbort = abort;
+
+  try {
+    const result = await annotatePdf(
+      pdfSession,
+      ({ page, totalPages, foundSoFar }) => {
+        pdfAnnotateStatus.textContent = `Scanning page ${page} of ${totalPages} — ${foundSoFar} barcode${
+          foundSoFar === 1 ? "" : "s"
+        } found so far…`;
+      },
+      abort.signal,
+    );
+
+    if (result === "aborted") {
+      pdfAnnotateStatus.textContent = "Interrupted.";
+    } else {
+      downloadBlob(new Blob([result.buffer as ArrayBuffer], { type: "application/pdf" }), annotatedFilename());
+      pdfAnnotateStatus.textContent = "Done — annotated PDF downloaded.";
+    }
+  } catch (err) {
+    pdfAnnotateStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+  } finally {
+    busy = false;
+    pdfAnnotateBtn.disabled = false;
+    interruptBtn.hidden = true;
+    activeAbort = null;
+  }
+});
+
+function annotatedFilename(): string {
+  const name = fileInput.files?.[0]?.name ?? "document.pdf";
+  return name.replace(/\.pdf$/i, "") + "_annotated.pdf";
+}
+
+// --- video mode ----------------------------------------------------------
+
+async function handleVideoFile(file: File) {
+  statusEl.textContent = "Loading video…";
+  try {
+    videoSession = await openVideo(videoEl, file);
+  } catch (err) {
+    statusEl.textContent = `Could not open video: ${err instanceof Error ? err.message : String(err)}`;
+    return;
+  }
+  videoControls.hidden = false;
+  videoScanBtn.textContent = "Find first barcode";
+  canvas.width = videoEl.videoWidth;
+  canvas.height = videoEl.videoHeight;
+  canvas.getContext("2d")!.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+  previewWrap.hidden = false;
+  statusEl.textContent = `Video loaded (${videoEl.duration.toFixed(1)}s). Click "Find first barcode" or skip to a frame.`;
+  if (!videoSession.usesFrameCallback) {
+    statusEl.textContent +=
+      " Note: this browser doesn't support per-frame stepping, so scanning samples ~10 times/sec instead of true frames.";
+  }
+}
+
+let foundOnceInVideo = false;
+
+videoScanBtn.addEventListener("click", async () => {
+  if (!videoSession || busy) return;
+  busy = true;
+  setVideoControlsDisabled(true);
+  interruptBtn.hidden = false;
+  const abort = new AbortController();
+  activeAbort = abort;
+  statusEl.textContent = "Scanning…";
+
+  try {
+    const outcome = await scanForward(videoSession, canvas, abort.signal, ({ frameIndex, timeSeconds }) => {
+      videoFrameLabel.textContent = `Scanning… frame ${frameIndex} (t=${timeSeconds.toFixed(2)}s)`;
+    });
+
+    videoFrameInput.value = String(outcome.frame.frameIndex);
+    videoFrameLabel.textContent = `Frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s)`;
+
+    if (outcome.status === "found") {
+      foundOnceInVideo = true;
+      videoScanBtn.textContent = "Find next match";
+      statusEl.textContent = `Found ${outcome.results.length} barcode${outcome.results.length === 1 ? "" : "s"} at frame ${outcome.frame.frameIndex}.`;
+      renderResultCards(resultsEl, outcome.results);
+    } else if (outcome.status === "ended") {
+      statusEl.textContent = foundOnceInVideo
+        ? "Reached end of video — no more barcodes found."
+        : "Reached end of video — no barcodes found.";
+    } else {
+      statusEl.textContent = `Interrupted at frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s).`;
+    }
+  } finally {
+    busy = false;
+    setVideoControlsDisabled(false);
+    interruptBtn.hidden = true;
+    activeAbort = null;
+  }
+});
+
+videoRestartBtn.addEventListener("click", () => {
+  if (!videoSession || busy) return;
+  videoEl.pause();
+  videoEl.currentTime = 0;
+  foundOnceInVideo = false;
+  videoScanBtn.textContent = "Find first barcode";
+  videoFrameInput.value = "0";
+  videoFrameLabel.textContent = "";
+  resultsEl.innerHTML = "";
+  statusEl.textContent = "Rewound to the start.";
+  canvas.getContext("2d")!.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.getContext("2d")!.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+});
+
+videoFrameGoBtn.addEventListener("click", async () => {
+  if (!videoSession || busy) return;
+  busy = true;
+  setVideoControlsDisabled(true);
+  statusEl.textContent = "Seeking…";
+
+  try {
+    const target = Math.max(0, Math.round(Number(videoFrameInput.value) || 0));
+    const { frame, results } = await seekToFrame(videoSession, canvas, target);
+    videoFrameLabel.textContent = `Frame ${frame.frameIndex} (t=${frame.timeSeconds.toFixed(2)}s, approximate)`;
+    statusEl.textContent =
+      results.length === 0
+        ? "No barcode found on this frame."
+        : `Found ${results.length} barcode${results.length === 1 ? "" : "s"} on this frame.`;
+    renderResultCards(resultsEl, results);
+  } finally {
+    busy = false;
+    setVideoControlsDisabled(false);
+  }
+});
+
+function setVideoControlsDisabled(disabled: boolean) {
+  videoScanBtn.disabled = disabled;
+  videoRestartBtn.disabled = disabled;
+  videoFrameInput.disabled = disabled;
+  videoFrameGoBtn.disabled = disabled;
+}
+
+// --- interrupt -------------------------------------------------------------
+
+interruptBtn.addEventListener("click", () => activeAbort?.abort());
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

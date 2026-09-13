@@ -16,15 +16,58 @@
     </header>
     <main>
       <p class="lede">
-        Upload an image containing one or more barcodes. Decoding runs
-        entirely in your browser via WebAssembly — the image is never sent
-        anywhere. Non-printable payload bytes (FNC1–4, GS1 separators, etc.)
-        are shown explicitly rather than silently dropped.
+        Upload an image, PDF, or video containing one or more barcodes.
+        Decoding runs entirely in your browser via WebAssembly — the file is
+        never sent anywhere. Non-printable payload bytes (FNC1–4, GS1
+        separators, etc.) are shown explicitly rather than silently dropped.
       </p>
 
       <div id="drop-zone" class="drop-zone">
-        <input type="file" id="file-input" accept="image/*" />
-        <p>Drop an image here, or click to choose a file.</p>
+        <input type="file" id="file-input" accept="image/*,application/pdf,video/*" />
+        <p>Drop an image, PDF, or video here, or click to choose a file.</p>
+      </div>
+
+      <div id="pdf-controls" class="mode-controls" hidden>
+        <div class="row">
+          <button type="button" id="pdf-prev" class="secondary">← Prev page</button>
+          <div>
+            <label for="pdf-page-input">Page</label>
+            <input type="number" id="pdf-page-input" min="1" value="1" />
+          </div>
+          <button type="button" id="pdf-next" class="secondary">Next page →</button>
+        </div>
+        <p id="pdf-page-label" class="lede"></p>
+        <div class="row">
+          <button type="button" id="pdf-annotate-btn" class="secondary">
+            Annotate whole PDF and download
+          </button>
+        </div>
+        <p id="pdf-annotate-status" class="lede"></p>
+      </div>
+
+      <div id="video-controls" class="mode-controls" hidden>
+        <p class="lede">
+          Browsers don't expose true random-access frame numbers, so frame
+          counts here are best-effort: exact while actively scanning forward
+          (measured from real playback), approximate when jumping directly to
+          a frame number.
+        </p>
+        <div class="row">
+          <button type="button" id="video-scan-btn">Find first barcode</button>
+          <button type="button" id="video-restart-btn" class="secondary">Restart from beginning</button>
+        </div>
+        <div class="row">
+          <div>
+            <label for="video-frame-input">Skip to frame #</label>
+            <input type="number" id="video-frame-input" min="0" value="0" />
+          </div>
+          <button type="button" id="video-frame-go" class="secondary">Go</button>
+        </div>
+        <p id="video-frame-label" class="lede"></p>
+      </div>
+
+      <div class="row">
+        <button type="button" id="interrupt-btn" class="secondary" hidden>Interrupt</button>
       </div>
 
       <div id="preview-wrap" class="preview-wrap" hidden>
@@ -33,6 +76,8 @@
 
       <div id="status"></div>
       <div id="results"></div>
+
+      <video id="video-source" hidden playsinline muted preload="auto"></video>
     </main>
     <script type="module" src="./src/decode.ts"></script>
   </body>
