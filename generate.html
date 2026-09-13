@@ -17,16 +17,10 @@
     <main>
       <p class="lede">
         A thin wrapper around
-        <a href="https://github.com/bwipp/postscriptbarcode/wiki" target="_blank" rel="noopener"
-          >BWIPP</a
-        >. Pick a symbology, type the data, and pass any BWIPP option as raw
-        JSON — same option names as the
-        <a href="https://github.com/bwipp/postscriptbarcode/wiki" target="_blank" rel="noopener"
-          >BWIPP wiki</a
-        >
-        (e.g. <code>parsefnc</code>, <code>eclevel</code>, <code>version</code>). Use
-        <code>^FNC1</code>/<code>^FNC2</code>/<code>^FNC3</code>/<code>^FNC4</code> in the text
-        with <code>"parsefnc": true</code> to embed function characters.
+        <a href="https://github.com/bwipp/postscriptbarcode/wiki" target="_blank" rel="noopener">BWIPP</a>. Pick a
+        symbology and its settings appear below; anything not covered by a control can still be set as raw JSON
+        under Advanced. Use <code>^FNC1</code>/<code>^FNC2</code>/<code>^FNC3</code>/<code>^FNC4</code> in the text
+        with "Parse ^FNC1.." on to embed function characters.
       </p>
 
       <form class="gen-form" id="gen-form">
@@ -49,10 +43,23 @@
           <textarea id="text" spellcheck="false"></textarea>
         </div>
 
-        <div>
+        <div id="symbology-fields-wrap" hidden>
+          <h2 id="symbology-fields-title"></h2>
+          <div id="symbology-fields" class="field-groups"></div>
+        </div>
+
+        <details id="generic-fields-details" class="mode-controls">
+          <summary>Common settings</summary>
+          <div id="generic-fields" class="field-groups"></div>
+        </details>
+
+        <details class="mode-controls">
+          <summary>Advanced: raw options JSON (merged in last, overrides everything above)</summary>
+          <label for="derived-options">Settings from the controls above (read-only)</label>
+          <textarea id="derived-options" readonly spellcheck="false" rows="4"></textarea>
           <label for="options">Options (JSON, passed through to BWIPP)</label>
           <textarea id="options" spellcheck="false"></textarea>
-        </div>
+        </details>
 
         <div class="actions">
           <button type="button" id="render-btn">Render</button>

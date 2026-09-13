@@ -1,8 +1,14 @@
 import bwipjs from "bwip-js/browser";
+import { GENERIC_FIELD_GROUPS, SYMBOLOGY_FIELDS, type FieldGroup, type FieldSpec } from "./symbology-options";
 
 const presetSelect = document.querySelector<HTMLSelectElement>("#preset")!;
 const bcidSelect = document.querySelector<HTMLSelectElement>("#bcid")!;
 const textInput = document.querySelector<HTMLTextAreaElement>("#text")!;
+const symbologyFieldsWrap = document.querySelector<HTMLDivElement>("#symbology-fields-wrap")!;
+const symbologyFieldsTitle = document.querySelector<HTMLHeadingElement>("#symbology-fields-title")!;
+const symbologyFieldsEl = document.querySelector<HTMLDivElement>("#symbology-fields")!;
+const genericFieldsEl = document.querySelector<HTMLDivElement>("#generic-fields")!;
+const derivedOptionsEl = document.querySelector<HTMLTextAreaElement>("#derived-options")!;
 const optionsInput = document.querySelector<HTMLTextAreaElement>("#options")!;
 const renderBtn = document.querySelector<HTMLButtonElement>("#render-btn")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#output-canvas")!;
@@ -19,6 +25,131 @@ for (const sym of bwipjs.symbolList) {
   bcidSelect.appendChild(opt);
 }
 
+// --- typed field rendering ---------------------------------------------
+
+function fieldId(name: string): string {
+  return `field-${name}`;
+}
+
+function createFieldElement(field: FieldSpec): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = `field field-${field.kind}`;
+  const id = fieldId(field.name);
+  const label = document.createElement("label");
+  label.htmlFor = id;
+  label.textContent = field.label;
+
+  let control: HTMLInputElement | HTMLSelectElement;
+  if (field.kind === "boolean") {
+    control = document.createElement("input");
+    control.type = "checkbox";
+  } else if (field.kind === "select") {
+    control = document.createElement("select");
+    for (const choice of field.choices) {
+      const opt = document.createElement("option");
+      opt.value = choice.value;
+      opt.textContent = choice.label;
+      control.appendChild(opt);
+    }
+  } else {
+    control = document.createElement("input");
+    control.type = field.kind === "number" ? "number" : "text";
+    if (field.kind === "number") {
+      if (field.min !== undefined) control.min = String(field.min);
+      if (field.max !== undefined) control.max = String(field.max);
+      if (field.step !== undefined) control.step = String(field.step);
+    } else if (field.placeholder) {
+      control.placeholder = field.placeholder;
+    }
+  }
+  control.id = id;
+  control.dataset.field = field.name;
+  control.dataset.kind = field.kind;
+
+  if (field.kind === "boolean") {
+    wrap.append(control, label);
+  } else {
+    wrap.append(label, control);
+  }
+  if (field.hint) {
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent = field.hint;
+    wrap.appendChild(hint);
+  }
+  return wrap;
+}
+
+function renderFieldGroups(container: HTMLElement, groups: FieldGroup[]) {
+  container.innerHTML = "";
+  for (const group of groups) {
+    const fieldset = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = group.title;
+    fieldset.appendChild(legend);
+    const grid = document.createElement("div");
+    grid.className = "field-grid";
+    for (const field of group.fields) grid.appendChild(createFieldElement(field));
+    fieldset.appendChild(grid);
+    container.appendChild(fieldset);
+  }
+}
+
+function renderFields(container: HTMLElement, fields: FieldSpec[]) {
+  container.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "field-grid";
+  for (const field of fields) grid.appendChild(createFieldElement(field));
+  container.appendChild(grid);
+}
+
+function collectFieldValues(container: HTMLElement): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  container.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-field]").forEach((el) => {
+    const name = el.dataset.field!;
+    const kind = el.dataset.kind!;
+    if (kind === "boolean") {
+      if ((el as HTMLInputElement).checked) result[name] = true;
+    } else if (kind === "number") {
+      if (el.value !== "") result[name] = Number(el.value);
+    } else if (el.value !== "") {
+      result[name] = el.value;
+    }
+  });
+  return result;
+}
+
+function resetFieldValues(container: HTMLElement) {
+  container.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-field]").forEach((el) => {
+    if (el instanceof HTMLInputElement && el.type === "checkbox") {
+      el.checked = false;
+    } else {
+      el.value = "";
+    }
+  });
+}
+
+renderFieldGroups(genericFieldsEl, GENERIC_FIELD_GROUPS);
+genericFieldsEl.addEventListener("input", () => renderDebounced());
+genericFieldsEl.addEventListener("change", () => renderDebounced());
+
+function updateSymbologyFields() {
+  const fields = SYMBOLOGY_FIELDS[bcidSelect.value];
+  if (fields && fields.length > 0) {
+    symbologyFieldsTitle.textContent = `"${bcidSelect.value}" settings`;
+    renderFields(symbologyFieldsEl, fields);
+    symbologyFieldsWrap.hidden = false;
+  } else {
+    symbologyFieldsEl.innerHTML = "";
+    symbologyFieldsWrap.hidden = true;
+  }
+}
+
+symbologyFieldsEl.addEventListener("input", () => renderDebounced());
+symbologyFieldsEl.addEventListener("change", () => renderDebounced());
+
+// --- presets -------------------------------------------------------------
+
 interface Preset {
   label: string;
   bcid: string;
@@ -33,14 +164,9 @@ const PRESETS: Preset[] = [
     label: "Code 128 with FNC3 (device command)",
     bcid: "code128",
     text: "^FNC3HELLO",
-    options: { parsefnc: true, showbearer: true },
+    options: { parsefnc: true },
   },
-  {
-    label: "Data Matrix",
-    bcid: "datamatrix",
-    text: "Hello Data Matrix!",
-    options: { showbearer: true },
-  },
+  { label: "Data Matrix", bcid: "datamatrix", text: "Hello Data Matrix!", options: {} },
   {
     label: "GS1-128 (AI 01 GTIN + AI 17 expiry)",
     bcid: "gs1-128",
@@ -61,12 +187,17 @@ presetSelect.addEventListener("change", () => {
   const preset = PRESETS[Number(presetSelect.value)];
   if (!preset) return;
   bcidSelect.value = preset.bcid;
+  updateSymbologyFields();
+  resetFieldValues(genericFieldsEl);
+  resetFieldValues(symbologyFieldsEl);
   textInput.value = preset.text;
   optionsInput.value = JSON.stringify(preset.options, null, 2);
   render();
 });
 
-function readOptions(): Record<string, unknown> | undefined {
+// --- render ----------------------------------------------------------------
+
+function readJsonOptions(): Record<string, unknown> | undefined {
   try {
     return optionsInput.value.trim() ? JSON.parse(optionsInput.value) : {};
   } catch (err) {
@@ -75,26 +206,43 @@ function readOptions(): Record<string, unknown> | undefined {
   }
 }
 
+function typedFieldValues(): Record<string, unknown> {
+  return {
+    ...collectFieldValues(genericFieldsEl),
+    ...collectFieldValues(symbologyFieldsEl),
+  };
+}
+
+function updateDerivedOptionsPreview() {
+  derivedOptionsEl.value = JSON.stringify(typedFieldValues(), null, 2);
+}
+
+function buildOptions(): (Record<string, unknown> & { bcid: string; text: string }) | undefined {
+  const jsonOptions = readJsonOptions();
+  if (jsonOptions === undefined) return undefined;
+  return {
+    // bwip-js otherwise renders a transparent background with black-RGB-
+    // but-alpha-0 pixels, which most decoders (including zxing-wasm) read
+    // as solid black and fail to scan.
+    backgroundcolor: "FFFFFF",
+    bcid: bcidSelect.value,
+    text: textInput.value,
+    ...typedFieldValues(),
+    ...jsonOptions,
+  };
+}
+
 function render() {
   errorEl.textContent = "";
   downloadPngBtn.disabled = true;
   downloadSvgBtn.disabled = true;
+  updateDerivedOptionsPreview();
 
-  const options = readOptions();
+  const options = buildOptions();
   if (options === undefined) return;
 
   try {
-    // bwip-js/BWIPP options are a large, symbology-dependent grab bag (see the
-    // BWIPP wiki) — passed straight through rather than modelled here.
-    // backgroundcolor defaults to opaque white: bwip-js otherwise renders a
-    // transparent background with black-RGB-but-alpha-0 pixels, which most
-    // decoders (including zxing-wasm) read as solid black and fail to scan.
-    bwipjs.toCanvas(canvas, {
-      backgroundcolor: "FFFFFF",
-      bcid: bcidSelect.value,
-      text: textInput.value,
-      ...options,
-    } as Parameters<typeof bwipjs.toCanvas>[1]);
+    bwipjs.toCanvas(canvas, options as Parameters<typeof bwipjs.toCanvas>[1]);
     downloadPngBtn.disabled = false;
     downloadSvgBtn.disabled = false;
   } catch (err) {
@@ -109,7 +257,10 @@ function renderDebounced() {
 }
 
 renderBtn.addEventListener("click", render);
-bcidSelect.addEventListener("change", render);
+bcidSelect.addEventListener("change", () => {
+  updateSymbologyFields();
+  render();
+});
 textInput.addEventListener("input", renderDebounced);
 optionsInput.addEventListener("input", renderDebounced);
 
@@ -129,15 +280,10 @@ downloadPngBtn.addEventListener("click", () => {
 });
 
 downloadSvgBtn.addEventListener("click", () => {
-  const options = readOptions();
+  const options = buildOptions();
   if (options === undefined) return;
   try {
-    const svg = bwipjs.toSVG({
-      backgroundcolor: "FFFFFF",
-      bcid: bcidSelect.value,
-      text: textInput.value,
-      ...options,
-    } as Parameters<typeof bwipjs.toSVG>[0]);
+    const svg = bwipjs.toSVG(options as Parameters<typeof bwipjs.toSVG>[0]);
     downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `${bcidSelect.value}.svg`);
   } catch (err) {
     errorEl.textContent = err instanceof Error ? err.message : String(err);
@@ -148,4 +294,5 @@ downloadSvgBtn.addEventListener("click", () => {
 bcidSelect.value = "qrcode";
 textInput.value = "https://github.com";
 optionsInput.value = "{}";
+updateSymbologyFields();
 render();

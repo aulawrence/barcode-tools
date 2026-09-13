@@ -252,7 +252,8 @@ label {
 select,
 textarea,
 button,
-input[type="text"] {
+input[type="text"],
+input[type="number"] {
   font: inherit;
   width: 100%;
   padding: 0.5rem 0.6rem;
@@ -265,6 +266,67 @@ input[type="text"] {
 textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   resize: vertical;
+}
+
+textarea[readonly] {
+  background: var(--code-bg);
+  color: var(--muted);
+}
+
+.field-groups fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.25rem 1rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.field-groups fieldset:last-child {
+  margin-bottom: 0;
+}
+
+.field-groups legend {
+  padding: 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem 1.25rem;
+  align-items: start;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.field label {
+  margin: 0;
+}
+
+.field.field-boolean {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field.field-boolean input {
+  width: auto;
+}
+
+.field.field-boolean label {
+  color: var(--fg);
+}
+
+.field .hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 #options {

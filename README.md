@@ -35,9 +35,22 @@ nothing uploaded anywhere), deployable as a static site to GitHub Pages.
 - **Generate** (`generate.html`) — a thin wrapper around
   [BWIPP](https://github.com/bwipp/postscriptbarcode/wiki) via
   [`bwip-js`](https://github.com/metafloor/bwip-js). Pick a symbology (the
-  list is pulled straight from `bwip-js`'s own symbol table), type the data,
-  and pass any BWIPP option as raw JSON — the same option names as the BWIPP
-  wiki (`parsefnc`, `eclevel`, `version`, etc.).
+  list is pulled straight from `bwip-js`'s own symbol table) and type the
+  data; settings appear as proper form controls in two tiers, defined in
+  [`src/symbology-options.ts`](src/symbology-options.ts):
+  - **Common settings** — text/size/color/border/padding/FNC-parsing
+    options that apply to nearly every symbology, sourced from bwip-js's
+    own type definitions.
+  - **Symbology-specific settings** — shown only for symbologies with
+    real extra options worth exposing as controls (QR/Micro QR, Data
+    Matrix, Aztec, PDF417/MicroPDF417, MaxiCode). Each field's valid
+    values were read directly out of BWIPP's PostScript source
+    (bundled with bwip-js) rather than guessed, since e.g. an invalid
+    Data Matrix version string would silently produce a broken barcode.
+  - Anything not covered by a control (any of BWIPP's ~100 other
+    symbologies, or an obscure option) can still be set as raw JSON
+    under **Advanced**, which is merged in last and overrides the
+    typed controls.
 
 ## Known limitation: which FNC value, on decode
 
