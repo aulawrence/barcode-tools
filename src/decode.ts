@@ -133,6 +133,7 @@ function resetModeUI() {
   previewWrap.hidden = true;
   pdfAnnotateStatus.textContent = "";
   videoFrameLabel.textContent = "";
+  videoFrameLabel.hidden = false;
   statusEl.textContent = "";
   resultsEl.innerHTML = "";
   currentMode = null;
@@ -341,6 +342,7 @@ async function handleCameraStart() {
   videoFileOnly.hidden = true;
   videoFileOnly2.hidden = true;
   cameraOnly.hidden = false;
+  videoFrameLabel.hidden = true; // frame/time counters aren't meaningful for a live camera stream
   videoScanBtn.textContent = "Scanning…";
   canvas.width = videoEl.videoWidth;
   canvas.height = videoEl.videoHeight;
@@ -364,6 +366,7 @@ cameraStopBtn.addEventListener("click", () => {
 async function runVideoScan() {
   if (!videoSession || busy) return;
   const sessionAtStart = videoSession;
+  const isCamera = currentMode === "camera";
   busy = true;
   setVideoControlsDisabled(true);
   interruptBtn.hidden = false;
@@ -373,7 +376,7 @@ async function runVideoScan() {
 
   try {
     const outcome = await scanForward(sessionAtStart, canvas, abort.signal, ({ frameIndex, timeSeconds }) => {
-      if (videoSession !== sessionAtStart) return;
+      if (videoSession !== sessionAtStart || isCamera) return;
       videoFrameLabel.textContent = `Scanning… frame ${frameIndex} (t=${timeSeconds.toFixed(2)}s)`;
     });
 
@@ -382,22 +385,31 @@ async function runVideoScan() {
     // whatever status that transition already set.
     if (videoSession !== sessionAtStart) return;
 
-    videoFrameInput.value = String(outcome.frame.frameIndex);
-    videoFrameLabel.textContent = `Frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s)`;
+    if (!isCamera) {
+      // For a live camera, requestVideoFrameCallback's frame/time counters
+      // aren't meaningful (they don't reset to 0 for a MediaStream) and
+      // there's no "skip to frame" control to feed them to anyway.
+      videoFrameInput.value = String(outcome.frame.frameIndex);
+      videoFrameLabel.textContent = `Frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s)`;
+    }
 
     if (outcome.status === "found") {
       foundOnceInVideo = true;
-      videoScanBtn.textContent = currentMode === "camera" ? "Scan for next barcode" : "Find next match";
-      statusEl.textContent = `Found ${outcome.results.length} barcode${outcome.results.length === 1 ? "" : "s"} at frame ${outcome.frame.frameIndex}.`;
+      videoScanBtn.textContent = isCamera ? "Scan for next barcode" : "Find next match";
+      statusEl.textContent = `Found ${outcome.results.length} barcode${outcome.results.length === 1 ? "" : "s"}${
+        isCamera ? "" : ` at frame ${outcome.frame.frameIndex}`
+      }.`;
       renderResultCards(resultsEl, outcome.results);
     } else if (outcome.status === "ended") {
-      videoScanBtn.textContent = currentMode === "camera" ? "Scan for barcode" : "Find first barcode";
+      videoScanBtn.textContent = isCamera ? "Scan for barcode" : "Find first barcode";
       statusEl.textContent = foundOnceInVideo
         ? "Reached end of video — no more barcodes found."
         : "Reached end of video — no barcodes found.";
     } else {
-      videoScanBtn.textContent = currentMode === "camera" ? "Scan for barcode" : "Find first barcode";
-      statusEl.textContent = `Interrupted at frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s).`;
+      videoScanBtn.textContent = isCamera ? "Scan for barcode" : "Find first barcode";
+      statusEl.textContent = isCamera
+        ? "Interrupted."
+        : `Interrupted at frame ${outcome.frame.frameIndex} (t=${outcome.frame.timeSeconds.toFixed(2)}s).`;
     }
   } finally {
     busy = false;
