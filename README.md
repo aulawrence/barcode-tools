@@ -111,3 +111,10 @@ this repo once, with source set to "GitHub Actions" (Settings → Pages).
 - [BWIPP Wiki](https://github.com/bwipp/postscriptbarcode/wiki) — symbology
   options reference for the Generate page.
 - [zxing-cpp supported formats](https://github.com/zxing-cpp/zxing-cpp#supported-formats)
+
+## License
+
+[MIT](LICENSE) for this project's own code. The built site bundles and
+serves the compiled code of several open-source runtime libraries
+(zxing-wasm/zxing-cpp, bwip-js/BWIPP, pdfjs-dist, pdf-lib) — see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for their licenses.
