@@ -25,7 +25,12 @@ export async function decodeImage(input: Blob | ImageData): Promise<ReadResult[]
   return readBarcodes(input, {
     tryHarder: true,
     maxNumberOfSymbols: 32,
-    returnErrors: true,
+    // Deliberately not returnErrors: true — that makes zxing-cpp also
+    // return checksum-failed *candidate* detections (common on blurry/
+    // partial camera frames), which would otherwise surface as bogus
+    // "found" results (e.g. ChecksumError @ ODCode128Reader.cpp) and, in
+    // video/camera scanning, incorrectly stop the scan on garbage.
+    returnErrors: false,
     textMode: "Escaped",
     formats: activeFormats,
   });

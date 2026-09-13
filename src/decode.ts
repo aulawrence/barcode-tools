@@ -134,6 +134,9 @@ function resetModeUI() {
   currentImageBitmap = null;
   pdfSession = null;
   foundOnceInVideo = false;
+  cameraBtn.hidden = false;
+  cameraBtn.disabled = false;
+  cameraBtn.textContent = "Use camera";
   if (videoSession) {
     closeVideoSession(videoSession);
     videoSession = null;
@@ -298,14 +301,19 @@ cameraBtn.addEventListener("click", () => void handleCameraStart());
 async function handleCameraStart() {
   resetModeUI();
   currentMode = "camera";
+  cameraBtn.disabled = true;
+  cameraBtn.textContent = "Starting camera…";
   statusEl.textContent = "Requesting camera…";
   try {
     videoSession = await openCamera(videoEl);
   } catch (err) {
     statusEl.textContent = `Could not start camera: ${err instanceof Error ? err.message : String(err)}. Camera access requires HTTPS (or localhost) and permission.`;
     currentMode = null;
+    cameraBtn.disabled = false;
+    cameraBtn.textContent = "Use camera";
     return;
   }
+  cameraBtn.hidden = true; // "Stop camera" below takes over from here
   videoControls.hidden = false;
   videoFileOnly.hidden = true;
   videoFileOnly2.hidden = true;
@@ -315,6 +323,9 @@ async function handleCameraStart() {
   canvas.height = videoEl.videoHeight;
   canvas.getContext("2d")!.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
   previewWrap.hidden = false;
+  // The camera view can start below the fold (format filter + drop zone
+  // above it) — bring the controls + live feed into view right away.
+  videoControls.scrollIntoView({ behavior: "smooth", block: "start" });
   await runVideoScan();
 }
 
